@@ -103,7 +103,7 @@ impl HostInputStream for TcpReadStream {
         if size == 0 {
             return Ok(bytes::Bytes::new());
         }
-
+        // FIXME: this is an unbounded allocation based on user input. need to bound it.
         let mut buf = bytes::BytesMut::with_capacity(size);
         let n = match self.stream.try_read_buf(&mut buf) {
             // A 0-byte read indicates that the stream has closed.
