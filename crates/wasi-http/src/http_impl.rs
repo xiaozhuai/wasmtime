@@ -4,6 +4,7 @@ use crate::bindings::http::{
 };
 use crate::types::{self, HostFutureIncomingResponse, OutgoingRequest};
 use crate::WasiHttpView;
+use anyhow::anyhow;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Empty};
 use hyper::Method;
@@ -15,8 +16,7 @@ impl<T: WasiHttpView> outgoing_handler::Host for T {
         &mut self,
         request_id: Resource<HostOutgoingRequest>,
         options: Option<Resource<http_types::RequestOptions>>,
-    ) -> wasmtime::Result<Result<Resource<HostFutureIncomingResponse>, outgoing_handler::Error>>
-    {
+    ) -> Result<Resource<HostFutureIncomingResponse>, types::Error> {
         let opts = options.and_then(|opts| self.table().get(&opts).ok());
 
         let connect_timeout = opts
@@ -44,9 +44,10 @@ impl<T: WasiHttpView> outgoing_handler::Host for T {
             crate::bindings::http::types::Method::Trace => Method::TRACE,
             crate::bindings::http::types::Method::Patch => Method::PATCH,
             crate::bindings::http::types::Method::Other(method) => {
-                return Ok(Err(outgoing_handler::Error::InvalidUrl(format!(
-                    "unknown method {method}"
-                ))));
+                return Err(types::Error::Error {
+                    code: http_types::ErrorCode::InvalidUrl(format!("unknown method {method}")),
+                    info: anyhow!("unknown method {method}"),
+                });
             }
         };
 
@@ -54,9 +55,10 @@ impl<T: WasiHttpView> outgoing_handler::Host for T {
             Scheme::Http => (false, "http://", 80),
             Scheme::Https => (true, "https://", 443),
             Scheme::Other(scheme) => {
-                return Ok(Err(outgoing_handler::Error::InvalidUrl(format!(
-                    "unsupported scheme {scheme}"
-                ))))
+                return Err(types::Error::Error {
+                    code: http_types::ErrorCode::InvalidUrl(format!("unsupported scheme {scheme}")),
+                    info: anyhow!("unsupported scheme {scheme}"),
+                })
             }
         };
 
@@ -88,13 +90,13 @@ impl<T: WasiHttpView> outgoing_handler::Host for T {
 
         let request = builder.body(body).map_err(types::http_protocol_error)?;
 
-        Ok(Ok(self.send_request(OutgoingRequest {
+        Ok(self.send_request(OutgoingRequest {
             use_tls,
             authority,
             request,
             connect_timeout,
             first_byte_timeout,
             between_bytes_timeout,
-        })?))
+        })?)
     }
 }

@@ -17,7 +17,24 @@ use wasmtime_wasi::preview2::{
     Pollable, Table,
 };
 
-impl<T: WasiHttpView> crate::bindings::http::types::Host for T {}
+impl<T: WasiHttpView> crate::bindings::http::types::Host for T {
+    fn http_error_code(
+        &mut self,
+        info: wasmtime::component::Resource<wasmtime_wasi::preview2::bindings::io::error::Error>,
+    ) -> wasmtime::Result<Option<types::ErrorCode>> {
+        todo!()
+    }
+
+    fn convert_error(&mut self, err: crate::types::Error) -> wasmtime::Result<types::Error> {
+        match err {
+            crate::types::Error::Error { code, info } => {
+                let info = self.table().push(info)?;
+                Ok(types::Error { code, info })
+            }
+            crate::types::Error::Trap(e) => Err(e),
+        }
+    }
+}
 
 /// Take ownership of the underlying [`FieldMap`] associated with this fields resource. If the
 /// fields resource references another fields, the returned [`FieldMap`] will be cloned.
@@ -769,13 +786,11 @@ impl<T: WasiHttpView> crate::bindings::http::types::HostFutureIncomingResponse f
         let resp =
             match std::mem::replace(resp, HostFutureIncomingResponse::Consumed).unwrap_ready() {
                 Err(e) => {
-                    // Trapping if it's not possible to downcast to an wasi-http error
-                    let e = e.downcast::<Error>()?;
-                    return Ok(Some(Ok(Err(e))));
+                    use crate::bindings::http::types::Host;
+                    return Ok(Some(Ok(Err(self.convert_error(e)?))));
                 }
 
-                Ok(Ok(resp)) => resp,
-                Ok(Err(e)) => return Ok(Some(Ok(Err(e)))),
+                Ok(resp) => resp,
             };
 
         let (parts, body) = resp.resp.into_parts();

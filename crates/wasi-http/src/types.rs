@@ -5,6 +5,7 @@ use crate::{
     bindings::http::types::{self, Method, Scheme},
     body::{HostIncomingBody, HyperIncomingBody, HyperOutgoingBody},
 };
+use anyhow::anyhow;
 use http_body_util::BodyExt;
 use hyper::header::HeaderName;
 use std::any::Any;
@@ -14,6 +15,40 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use wasmtime::component::Resource;
 use wasmtime_wasi::preview2::{self, AbortOnDropJoinHandle, Subscribe, Table};
+
+#[derive(Debug)]
+pub enum Error {
+    Error {
+        code: types::ErrorCode,
+        info: anyhow::Error,
+    },
+
+    Trap(anyhow::Error),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Error { code, info } => write!(f, "Error {{ code: {code:?}, info: {info} }}"),
+            Self::Trap(e) => write!(f, "Trap({e})"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Error { info, .. } => Some(info.as_ref()),
+            Self::Trap(e) => Some(e.as_ref()),
+        }
+    }
+}
+
+impl From<wasmtime_wasi::preview2::TableError> for Error {
+    fn from(err: wasmtime_wasi::preview2::TableError) -> Self {
+        Self::Trap(err.into())
+    }
+}
 
 /// Capture the state necessary for use in the wasi-http API implementation.
 pub struct WasiHttpCtx;
@@ -60,7 +95,7 @@ pub trait WasiHttpView: Send {
     fn send_request(
         &mut self,
         request: OutgoingRequest,
-    ) -> wasmtime::Result<Resource<HostFutureIncomingResponse>>
+    ) -> Result<Resource<HostFutureIncomingResponse>, Error>
     where
         Self: Sized,
     {
@@ -82,7 +117,7 @@ pub fn default_send_request(
         first_byte_timeout,
         between_bytes_timeout,
     }: OutgoingRequest,
-) -> wasmtime::Result<Resource<HostFutureIncomingResponse>> {
+) -> Result<Resource<HostFutureIncomingResponse>, Error> {
     let handle = preview2::spawn(async move {
         let resp = handler(
             authority,
@@ -93,7 +128,7 @@ pub fn default_send_request(
             between_bytes_timeout,
         )
         .await;
-        Ok(resp)
+        resp
     });
 
     let fut = view.table().push(HostFutureIncomingResponse::new(handle))?;
@@ -108,7 +143,7 @@ async fn handler(
     first_byte_timeout: Duration,
     request: http::Request<HyperOutgoingBody>,
     between_bytes_timeout: Duration,
-) -> Result<IncomingResponseInternal, types::Error> {
+) -> Result<IncomingResponseInternal, Error> {
     let tcp_stream = TcpStream::connect(authority.clone())
         .await
         .map_err(invalid_url)?;
@@ -116,9 +151,12 @@ async fn handler(
     let (mut sender, worker) = if use_tls {
         #[cfg(any(target_arch = "riscv64", target_arch = "s390x"))]
         {
-            return Err(crate::bindings::http::types::Error::UnexpectedError(
-                "unsupported architecture for SSL".to_string(),
-            ));
+            return Err(Error::Error {
+                code: crate::bindings::http::types::Error::UnexpectedError(
+                    "unsupported architecture for SSL".to_string(),
+                ),
+                info: anyhow!("unsupported architecture for SSL"),
+            });
         }
 
         #[cfg(not(any(target_arch = "riscv64", target_arch = "s390x")))]
@@ -141,18 +179,25 @@ async fn handler(
             let connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
             let mut parts = authority.split(":");
             let host = parts.next().unwrap_or(&authority);
-            let domain = rustls::ServerName::try_from(host)?;
+            let domain = rustls::ServerName::try_from(host).map_err(|e| Error::Error {
+                code: types::ErrorCode::InvalidUrl("invalid dnsname".to_string()),
+                info: anyhow!(e),
+            })?;
             let stream = connector
                 .connect(domain, tcp_stream)
                 .await
-                .map_err(|e| crate::bindings::http::types::Error::ProtocolError(e.to_string()))?;
+                .map_err(|e| Error::Error {
+                    code: crate::bindings::http::types::ErrorCode::ProtocolError(e.to_string()),
+                    info: anyhow!(e),
+                })?;
 
             let (sender, conn) = timeout(
                 connect_timeout,
                 hyper::client::conn::http1::handshake(stream),
             )
             .await
-            .map_err(|_| timeout_error("connection"))??;
+            .map_err(|_| timeout_error("connection"))?
+            .map_err(hyper_protocol_error)?;
 
             let worker = preview2::spawn(async move {
                 match conn.await {
@@ -172,7 +217,8 @@ async fn handler(
             hyper::client::conn::http1::handshake(tcp_stream),
         )
         .await
-        .map_err(|_| timeout_error("connection"))??;
+        .map_err(|_| timeout_error("connection"))?
+        .map_err(hyper_protocol_error)?;
 
         let worker = preview2::spawn(async move {
             match conn.await {
@@ -189,7 +235,7 @@ async fn handler(
         .await
         .map_err(|_| timeout_error("first byte"))?
         .map_err(hyper_protocol_error)?
-        .map(|body| body.map_err(|e| e.into()).boxed());
+        .map(|body| body.map_err(hyper_protocol_error).boxed());
 
     Ok(IncomingResponseInternal {
         resp,
@@ -198,22 +244,34 @@ async fn handler(
     })
 }
 
-pub fn timeout_error(kind: &str) -> types::Error {
-    types::Error::TimeoutError(format!("{kind} timed out"))
+pub fn timeout_error(kind: &str) -> Error {
+    Error::Error {
+        code: types::ErrorCode::TimeoutError(format!("{kind} timed out")),
+        info: anyhow!(kind),
+    }
 }
 
-pub fn http_protocol_error(e: http::Error) -> types::Error {
-    types::Error::ProtocolError(e.to_string())
+pub fn http_protocol_error(e: http::Error) -> Error {
+    Error::Error {
+        code: types::ErrorCode::ProtocolError(e.to_string()),
+        info: anyhow!(e),
+    }
 }
 
-pub fn hyper_protocol_error(e: hyper::Error) -> types::Error {
-    types::Error::ProtocolError(e.to_string())
+pub fn hyper_protocol_error(e: hyper::Error) -> Error {
+    Error::Error {
+        code: types::ErrorCode::ProtocolError(e.to_string()),
+        info: anyhow!(e),
+    }
 }
 
-fn invalid_url(e: std::io::Error) -> types::Error {
+fn invalid_url(e: std::io::Error) -> Error {
     // TODO: DNS errors show up as a Custom io error, what subset of errors should we consider for
     // InvalidUrl here?
-    types::Error::InvalidUrl(e.to_string())
+    Error::Error {
+        code: types::ErrorCode::InvalidUrl(e.to_string()),
+        info: anyhow!(e),
+    }
 }
 
 impl From<http::Method> for types::Method {
@@ -346,12 +404,11 @@ pub struct IncomingResponseInternal {
     pub between_bytes_timeout: std::time::Duration,
 }
 
-type FutureIncomingResponseHandle =
-    AbortOnDropJoinHandle<anyhow::Result<Result<IncomingResponseInternal, types::Error>>>;
+type FutureIncomingResponseHandle = AbortOnDropJoinHandle<Result<IncomingResponseInternal, Error>>;
 
 pub enum HostFutureIncomingResponse {
     Pending(FutureIncomingResponseHandle),
-    Ready(anyhow::Result<Result<IncomingResponseInternal, types::Error>>),
+    Ready(Result<IncomingResponseInternal, Error>),
     Consumed,
 }
 
@@ -364,7 +421,7 @@ impl HostFutureIncomingResponse {
         matches!(self, Self::Ready(_))
     }
 
-    pub fn unwrap_ready(self) -> anyhow::Result<Result<IncomingResponseInternal, types::Error>> {
+    pub fn unwrap_ready(self) -> Result<IncomingResponseInternal, Error> {
         match self {
             Self::Ready(res) => res,
             Self::Pending(_) | Self::Consumed => {

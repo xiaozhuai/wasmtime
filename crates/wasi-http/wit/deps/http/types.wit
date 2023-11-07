@@ -5,6 +5,7 @@ interface types {
   use wasi:clocks/monotonic-clock@0.2.0-rc-2023-11-05.{duration};
   use wasi:io/streams@0.2.0-rc-2023-11-05.{input-stream, output-stream};
   use wasi:io/poll@0.2.0-rc-2023-11-05.{pollable};
+  use wasi:io/error@0.2.0-rc-2023-11-05.{error as io-error};
 
   /// This type corresponds to HTTP standard Methods.
   variant method {
@@ -30,12 +31,21 @@ interface types {
   /// TODO: perhaps better align with HTTP semantics?
   /// This type enumerates the different kinds of errors that may occur when
   /// initially returning a response.
-  variant error {
+  variant error-code {
     invalid-url(string),
     timeout-error(string),
     protocol-error(string),
     unexpected-error(string)
   }
+
+  record error {
+    code: error-code,
+
+    /// Additional information about the error mentioned in the `code` field.
+    info: io-error,
+  }
+
+  http-error-code: func(info: borrow<io-error>) -> option<error-code>;
 
   /// This tyep enumerates the different kinds of errors that may occur when
   /// setting or appending to a `fields` resource.
