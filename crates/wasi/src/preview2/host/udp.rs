@@ -24,16 +24,16 @@ use wasmtime::component::Resource;
 /// In practice, datagrams are typically less than 1500 bytes.
 const MAX_UDP_DATAGRAM_SIZE: usize = u16::MAX as usize;
 
-impl<T: WasiView> udp::Host for T {}
+impl udp::Host for WasiView {}
 
-impl<T: WasiView> udp::HostUdpSocket for T {
+impl udp::HostUdpSocket for WasiView {
     fn start_bind(
         &mut self,
         this: Resource<udp::UdpSocket>,
         network: Resource<Network>,
         local_address: IpSocketAddress,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
+        let table = self.table;
         let socket = table.get(&this)?;
         let network = table.get(&network)?;
         let local_address: SocketAddr = local_address.into();
@@ -75,7 +75,7 @@ impl<T: WasiView> udp::HostUdpSocket for T {
     }
 
     fn finish_bind(&mut self, this: Resource<udp::UdpSocket>) -> SocketResult<()> {
-        let table = self.table_mut();
+        let table = self.table;
         let socket = table.get_mut(&this)?;
 
         match socket.udp_state {
@@ -95,7 +95,7 @@ impl<T: WasiView> udp::HostUdpSocket for T {
         Resource<udp::IncomingDatagramStream>,
         Resource<udp::OutgoingDatagramStream>,
     )> {
-        let table = self.table_mut();
+        let table = self.table;
 
         let has_active_streams = table
             .iter_children(&this)?
@@ -155,8 +155,8 @@ impl<T: WasiView> udp::HostUdpSocket for T {
         };
 
         Ok((
-            self.table_mut().push_child(incoming_stream, &this)?,
-            self.table_mut().push_child(outgoing_stream, &this)?,
+            self.table.push_child(incoming_stream, &this)?,
+            self.table.push_child(outgoing_stream, &this)?,
         ))
     }
 
@@ -217,7 +217,7 @@ impl<T: WasiView> udp::HostUdpSocket for T {
     }
 
     fn set_ipv6_only(&mut self, this: Resource<udp::UdpSocket>, value: bool) -> SocketResult<()> {
-        let table = self.table_mut();
+        let table = self.table;
         let socket = table.get_mut(&this)?;
 
         match socket.family {
@@ -307,11 +307,11 @@ impl<T: WasiView> udp::HostUdpSocket for T {
     }
 
     fn subscribe(&mut self, this: Resource<udp::UdpSocket>) -> anyhow::Result<Resource<Pollable>> {
-        crate::preview2::poll::subscribe(self.table_mut(), this)
+        crate::preview2::poll::subscribe(self.table, this)
     }
 
     fn drop(&mut self, this: Resource<udp::UdpSocket>) -> Result<(), anyhow::Error> {
-        let table = self.table_mut();
+        let table = self.table;
 
         // As in the filesystem implementation, we assume closing a socket
         // doesn't block.
@@ -322,7 +322,7 @@ impl<T: WasiView> udp::HostUdpSocket for T {
     }
 }
 
-impl<T: WasiView> udp::HostIncomingDatagramStream for T {
+impl udp::HostIncomingDatagramStream for WasiView {
     fn receive(
         &mut self,
         this: Resource<udp::IncomingDatagramStream>,
@@ -388,11 +388,11 @@ impl<T: WasiView> udp::HostIncomingDatagramStream for T {
         &mut self,
         this: Resource<udp::IncomingDatagramStream>,
     ) -> anyhow::Result<Resource<Pollable>> {
-        crate::preview2::poll::subscribe(self.table_mut(), this)
+        crate::preview2::poll::subscribe(self.table, this)
     }
 
     fn drop(&mut self, this: Resource<udp::IncomingDatagramStream>) -> Result<(), anyhow::Error> {
-        let table = self.table_mut();
+        let table = self.table;
 
         // As in the filesystem implementation, we assume closing a socket
         // doesn't block.
@@ -414,9 +414,9 @@ impl Subscribe for IncomingDatagramStream {
     }
 }
 
-impl<T: WasiView> udp::HostOutgoingDatagramStream for T {
+impl udp::HostOutgoingDatagramStream for WasiView {
     fn check_send(&mut self, this: Resource<udp::OutgoingDatagramStream>) -> SocketResult<u64> {
-        let table = self.table_mut();
+        let table = self.table;
         let stream = table.get_mut(&this)?;
 
         let permit = match stream.send_state {
@@ -468,7 +468,7 @@ impl<T: WasiView> udp::HostOutgoingDatagramStream for T {
             Ok(())
         }
 
-        let table = self.table_mut();
+        let table = self.table;
         let stream = table.get_mut(&this)?;
 
         match stream.send_state {
@@ -517,11 +517,11 @@ impl<T: WasiView> udp::HostOutgoingDatagramStream for T {
         &mut self,
         this: Resource<udp::OutgoingDatagramStream>,
     ) -> anyhow::Result<Resource<Pollable>> {
-        crate::preview2::poll::subscribe(self.table_mut(), this)
+        crate::preview2::poll::subscribe(self.table, this)
     }
 
     fn drop(&mut self, this: Resource<udp::OutgoingDatagramStream>) -> Result<(), anyhow::Error> {
-        let table = self.table_mut();
+        let table = self.table;
 
         // As in the filesystem implementation, we assume closing a socket
         // doesn't block.

@@ -19,18 +19,17 @@ use std::time::Duration;
 use tokio::io::Interest;
 use wasmtime::component::Resource;
 
-impl<T: WasiView> tcp::Host for T {}
+impl tcp::Host for WasiView {}
 
-impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
+impl crate::preview2::host::tcp::tcp::HostTcpSocket for WasiView {
     fn start_bind(
         &mut self,
         this: Resource<tcp::TcpSocket>,
         network: Resource<Network>,
         local_address: IpSocketAddress,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get(&this)?;
-        let network = table.get(&network)?;
+        let socket = self.table.get(&this)?;
+        let network = self.table.get(&network)?;
         let local_address: SocketAddr = local_address.into();
 
         match socket.tcp_state {
@@ -62,15 +61,14 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
             })?;
         }
 
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
         socket.tcp_state = TcpState::BindStarted;
 
         Ok(())
     }
 
     fn finish_bind(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.tcp_state {
             TcpState::BindStarted => {}
@@ -88,10 +86,9 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         network: Resource<Network>,
         remote_address: IpSocketAddress,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
         let r = {
-            let socket = table.get(&this)?;
-            let network = table.get(&network)?;
+            let socket = self.table.get(&this)?;
+            let network = self.table.get(&network)?;
             let remote_address: SocketAddr = remote_address.into();
 
             match socket.tcp_state {
@@ -120,7 +117,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         match r {
             // succeed immediately,
             Ok(()) => {
-                let socket = table.get_mut(&this)?;
+                let socket = self.table.get_mut(&this)?;
                 socket.tcp_state = TcpState::ConnectReady;
                 return Ok(());
             }
@@ -135,7 +132,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
             }
         }
 
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
         socket.tcp_state = TcpState::Connecting;
 
         Ok(())
@@ -145,8 +142,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         &mut self,
         this: Resource<tcp::TcpSocket>,
     ) -> SocketResult<(Resource<InputStream>, Resource<OutputStream>)> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.tcp_state {
             TcpState::ConnectReady => {}
@@ -179,15 +175,14 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
 
         socket.tcp_state = TcpState::Connected;
         let (input, output) = socket.as_split();
-        let input_stream = self.table_mut().push_child(input, &this)?;
-        let output_stream = self.table_mut().push_child(output, &this)?;
+        let input_stream = self.table.push_child(input, &this)?;
+        let output_stream = self.table.push_child(output, &this)?;
 
         Ok((input_stream, output_stream))
     }
 
     fn start_listen(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.tcp_state {
             TcpState::Bound => {}
@@ -212,8 +207,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn finish_listen(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.tcp_state {
             TcpState::ListenStarted => {}
@@ -233,8 +227,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         Resource<InputStream>,
         Resource<OutputStream>,
     )> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.tcp_state {
             TcpState::Listening => {}
@@ -281,16 +274,15 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         let (input, output) = tcp_socket.as_split();
         let output: OutputStream = output;
 
-        let tcp_socket = self.table_mut().push(tcp_socket)?;
-        let input_stream = self.table_mut().push_child(input, &tcp_socket)?;
-        let output_stream = self.table_mut().push_child(output, &tcp_socket)?;
+        let tcp_socket = self.table.push(tcp_socket)?;
+        let input_stream = self.table.push_child(input, &tcp_socket)?;
+        let output_stream = self.table.push_child(output, &tcp_socket)?;
 
         Ok((tcp_socket, input_stream, output_stream))
     }
 
     fn local_address(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<IpSocketAddress> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.tcp_state {
             TcpState::Default => return Err(ErrorCode::InvalidState.into()),
@@ -306,8 +298,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn remote_address(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<IpSocketAddress> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.tcp_state {
             TcpState::Connected => {}
@@ -325,8 +316,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn is_listening(&mut self, this: Resource<tcp::TcpSocket>) -> Result<bool, anyhow::Error> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.tcp_state {
             TcpState::Listening => Ok(true),
@@ -338,8 +328,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         &mut self,
         this: Resource<tcp::TcpSocket>,
     ) -> Result<IpAddressFamily, anyhow::Error> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.family {
             SocketAddressFamily::Ipv4 => Ok(IpAddressFamily::Ipv4),
@@ -348,8 +337,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn ipv6_only(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<bool> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         // Instead of just calling the OS we return our own internal state, because
         // MacOS doesn't propagate the V6ONLY state on to accepted client sockets.
@@ -361,8 +349,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn set_ipv6_only(&mut self, this: Resource<tcp::TcpSocket>, value: bool) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.family {
             SocketAddressFamily::Ipv4 => Err(ErrorCode::NotSupported.into()),
@@ -386,8 +373,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         const MIN_BACKLOG: i32 = 1;
         const MAX_BACKLOG: i32 = i32::MAX; // OS'es will most likely limit it down even further.
 
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         if value == 0 {
             return Err(ErrorCode::InvalidArgument.into());
@@ -425,8 +411,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn keep_alive_enabled(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<bool> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(sockopt::get_socket_keepalive(socket.tcp_socket())?)
     }
 
@@ -435,14 +420,12 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: bool,
     ) -> SocketResult<()> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(sockopt::set_socket_keepalive(socket.tcp_socket(), value)?)
     }
 
     fn keep_alive_idle_time(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u64> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(sockopt::get_tcp_keepidle(socket.tcp_socket())?.as_nanos() as u64)
     }
 
@@ -451,8 +434,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: u64,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         let duration = Duration::from_nanos(value);
 
@@ -467,8 +449,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn keep_alive_interval(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u64> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(sockopt::get_tcp_keepintvl(socket.tcp_socket())?.as_nanos() as u64)
     }
 
@@ -477,8 +458,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: u64,
     ) -> SocketResult<()> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(util::set_tcp_keepintvl(
             socket.tcp_socket(),
             Duration::from_nanos(value),
@@ -486,8 +466,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn keep_alive_count(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u32> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(sockopt::get_tcp_keepcnt(socket.tcp_socket())?)
     }
 
@@ -496,14 +475,12 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: u32,
     ) -> SocketResult<()> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
         Ok(util::set_tcp_keepcnt(socket.tcp_socket(), value)?)
     }
 
     fn hop_limit(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u8> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         let ttl = match socket.family {
             SocketAddressFamily::Ipv4 => util::get_ip_ttl(socket.tcp_socket())?,
@@ -514,8 +491,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn set_hop_limit(&mut self, this: Resource<tcp::TcpSocket>, value: u8) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
 
         match socket.family {
             SocketAddressFamily::Ipv4 => util::set_ip_ttl(socket.tcp_socket(), value)?,
@@ -533,8 +509,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn receive_buffer_size(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u64> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         let value = util::get_socket_recv_buffer_size(socket.tcp_socket())?;
         Ok(value as u64)
@@ -545,8 +520,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: u64,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
         let value = value.try_into().unwrap_or(usize::MAX);
 
         util::set_socket_recv_buffer_size(socket.tcp_socket(), value)?;
@@ -560,8 +534,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn send_buffer_size(&mut self, this: Resource<tcp::TcpSocket>) -> SocketResult<u64> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         let value = util::get_socket_send_buffer_size(socket.tcp_socket())?;
         Ok(value as u64)
@@ -572,8 +545,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         value: u64,
     ) -> SocketResult<()> {
-        let table = self.table_mut();
-        let socket = table.get_mut(&this)?;
+        let socket = self.table.get_mut(&this)?;
         let value = value.try_into().unwrap_or(usize::MAX);
 
         util::set_socket_send_buffer_size(socket.tcp_socket(), value)?;
@@ -587,7 +559,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn subscribe(&mut self, this: Resource<tcp::TcpSocket>) -> anyhow::Result<Resource<Pollable>> {
-        crate::preview2::poll::subscribe(self.table_mut(), this)
+        crate::preview2::poll::subscribe(&mut self.table, this)
     }
 
     fn shutdown(
@@ -595,8 +567,7 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
         this: Resource<tcp::TcpSocket>,
         shutdown_type: ShutdownType,
     ) -> SocketResult<()> {
-        let table = self.table();
-        let socket = table.get(&this)?;
+        let socket = self.table.get(&this)?;
 
         match socket.tcp_state {
             TcpState::Connected => {}
@@ -620,11 +591,9 @@ impl<T: WasiView> crate::preview2::host::tcp::tcp::HostTcpSocket for T {
     }
 
     fn drop(&mut self, this: Resource<tcp::TcpSocket>) -> Result<(), anyhow::Error> {
-        let table = self.table_mut();
-
         // As in the filesystem implementation, we assume closing a socket
         // doesn't block.
-        let dropped = table.delete(this)?;
+        let dropped = self.table.delete(this)?;
         drop(dropped);
 
         Ok(())

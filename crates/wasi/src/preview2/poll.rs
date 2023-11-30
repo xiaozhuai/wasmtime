@@ -64,11 +64,11 @@ where
 }
 
 #[async_trait::async_trait]
-impl<T: WasiView> poll::Host for T {
+impl poll::Host for WasiView {
     async fn poll(&mut self, pollables: Vec<Resource<Pollable>>) -> Result<Vec<u32>> {
         type ReadylistIndex = u32;
 
-        let table = self.table_mut();
+        let table = self.table;
 
         let mut table_futures: HashMap<u32, (MakeFuture, Vec<ReadylistIndex>)> = HashMap::new();
 
@@ -119,16 +119,16 @@ impl<T: WasiView> poll::Host for T {
 }
 
 #[async_trait::async_trait]
-impl<T: WasiView> crate::preview2::bindings::io::poll::HostPollable for T {
+impl crate::preview2::bindings::io::poll::HostPollable for WasiView {
     async fn block(&mut self, pollable: Resource<Pollable>) -> Result<()> {
-        let table = self.table_mut();
+        let table = self.table;
         let pollable = table.get(&pollable)?;
         let ready = (pollable.make_future)(table.get_any_mut(pollable.index)?);
         ready.await;
         Ok(())
     }
     async fn ready(&mut self, pollable: Resource<Pollable>) -> Result<bool> {
-        let table = self.table_mut();
+        let table = self.table;
         let pollable = table.get(&pollable)?;
         let ready = (pollable.make_future)(table.get_any_mut(pollable.index)?);
         futures::pin_mut!(ready);
@@ -138,9 +138,9 @@ impl<T: WasiView> crate::preview2::bindings::io::poll::HostPollable for T {
         ))
     }
     fn drop(&mut self, pollable: Resource<Pollable>) -> Result<()> {
-        let pollable = self.table_mut().delete(pollable)?;
+        let pollable = self.table.delete(pollable)?;
         if let Some(delete) = pollable.remove_index_on_delete {
-            delete(self.table_mut(), pollable.index)?;
+            delete(self.table, pollable.index)?;
         }
         Ok(())
     }
@@ -155,13 +155,13 @@ pub mod sync {
     use anyhow::Result;
     use wasmtime::component::Resource;
 
-    impl<T: WasiView> poll::Host for T {
+    impl poll::Host for WasiView {
         fn poll(&mut self, pollables: Vec<Resource<Pollable>>) -> Result<Vec<u32>> {
             in_tokio(async { async_poll::Host::poll(self, pollables).await })
         }
     }
 
-    impl<T: WasiView> crate::preview2::bindings::sync_io::io::poll::HostPollable for T {
+    impl crate::preview2::bindings::sync_io::io::poll::HostPollable for WasiView {
         fn ready(&mut self, pollable: Resource<Pollable>) -> Result<bool> {
             in_tokio(async { async_poll::HostPollable::ready(self, pollable).await })
         }

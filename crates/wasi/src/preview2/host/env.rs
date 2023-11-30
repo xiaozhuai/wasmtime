@@ -1,12 +1,12 @@
 use crate::preview2::bindings::cli::environment;
 use crate::preview2::WasiView;
 
-impl<T: WasiView> environment::Host for T {
+impl environment::Host for WasiView<'_> {
     fn get_environment(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        Ok(self.ctx().env.clone())
+        Ok(self.ctx.env.clone())
     }
     fn get_arguments(&mut self) -> anyhow::Result<Vec<String>> {
-        Ok(self.ctx().args.clone())
+        Ok(self.ctx.args.clone())
     }
     fn initial_cwd(&mut self) -> anyhow::Result<Option<String>> {
         // FIXME: expose cwd in builder and save in ctx

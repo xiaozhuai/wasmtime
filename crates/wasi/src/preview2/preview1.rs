@@ -1,5 +1,4 @@
 use crate::preview2::bindings::{
-    self,
     cli::{
         stderr, stdin, stdout, terminal_input, terminal_output, terminal_stderr, terminal_stdin,
         terminal_stdout,
@@ -312,9 +311,9 @@ impl WasiPreview1Adapter {
 
 // Any context that needs to support preview 1 will impl this trait. They can
 // construct the needed member with WasiPreview1Adapter::new().
-pub trait WasiPreview1View: WasiView {
-    fn adapter(&self) -> &WasiPreview1Adapter;
-    fn adapter_mut(&mut self) -> &mut WasiPreview1Adapter;
+pub struct WasiPreview1View<'a> {
+    pub wasi: WasiView<'a>,
+    pub adapter: &'a mut WasiPreview1Adapter,
 }
 
 /// A mutably-borrowed [`WasiPreview1View`] implementation, which provides access to the stored
@@ -326,20 +325,20 @@ pub trait WasiPreview1View: WasiView {
 // of the [`WasiPreview1View`] to provide means to return mutably and immutably borrowed [`Descriptors`]
 // without having to rely on something like `Arc<Mutex<Descriptors>>`, while also being able to
 // call methods like [`Descriptor::is_file`] and hiding complexity from preview1 method implementations.
-struct Transaction<'a, T: WasiPreview1View + ?Sized> {
-    view: &'a mut T,
+struct Transaction<'a> {
+    view: &'a mut WasiPreview1View,
     descriptors: Descriptors,
 }
 
-impl<T: WasiPreview1View + ?Sized> Drop for Transaction<'_, T> {
+impl Drop for Transaction<'_> {
     /// Record changes in the [`WasiPreview1Adapter`] returned by [`WasiPreview1View::adapter_mut`]
     fn drop(&mut self) {
         let descriptors = mem::take(&mut self.descriptors);
-        self.view.adapter_mut().descriptors = Some(descriptors);
+        self.view.adapter.descriptors = Some(descriptors);
     }
 }
 
-impl<T: WasiPreview1View + ?Sized> Transaction<'_, T> {
+impl Transaction<'_> {
     /// Borrows [`Descriptor`] corresponding to `fd`.
     ///
     /// # Errors
@@ -357,7 +356,7 @@ impl<T: WasiPreview1View + ?Sized> Transaction<'_, T> {
         let fd = fd.into();
         match self.descriptors.get(&fd) {
             Some(Descriptor::File(file @ File { fd, .. })) => {
-                self.view.table().get(fd)?.file()?;
+                self.view.wasi.table.get(fd)?.file()?;
                 Ok(file)
             }
             _ => Err(types::Errno::Badf.into()),
@@ -434,8 +433,7 @@ impl<T: WasiPreview1View + ?Sized> Transaction<'_, T> {
 }
 
 trait WasiPreview1ViewExt:
-    WasiPreview1View
-    + preopens::Host
+    preopens::Host
     + stdin::Host
     + stdout::Host
     + stderr::Host
@@ -494,18 +492,20 @@ trait WasiPreview1ViewExt:
     }
 }
 
-impl<T: WasiPreview1View + preopens::Host> WasiPreview1ViewExt for T {}
+impl WasiPreview1ViewExt for WasiPreview1View {}
 
-pub fn add_to_linker_async<T: WasiPreview1View + Sync>(
+pub fn add_to_linker_async<T>(
     linker: &mut wasmtime::Linker<T>,
+    f: impl Fn(&mut T) -> &mut WasiPreview1View,
 ) -> anyhow::Result<()> {
-    wasi_snapshot_preview1::add_to_linker(linker, |t| t)
+    wasi_snapshot_preview1::add_to_linker(linker, f)
 }
 
-pub fn add_to_linker_sync<T: WasiPreview1View + Sync>(
+pub fn add_to_linker_sync<T>(
     linker: &mut wasmtime::Linker<T>,
+    f: impl Fn(&mut T) -> &mut WasiPreview1View,
 ) -> anyhow::Result<()> {
-    sync::add_wasi_snapshot_preview1_to_linker(linker, |t| t)
+    sync::add_wasi_snapshot_preview1_to_linker(linker, f)
 }
 
 // Generate the wasi_snapshot_preview1::WasiSnapshotPreview1 trait,
@@ -846,19 +846,7 @@ fn first_non_empty_iovec<'a>(
 // Implement the WasiSnapshotPreview1 trait using only the traits that are
 // required for T, i.e., in terms of the preview 2 wit interface, and state
 // stored in the WasiPreview1Adapter struct.
-impl<
-        T: WasiPreview1View
-            + bindings::cli::environment::Host
-            + bindings::cli::exit::Host
-            + bindings::filesystem::preopens::Host
-            + bindings::filesystem::types::Host
-            + bindings::io::poll::Host
-            + bindings::random::random::Host
-            + bindings::io::streams::Host
-            + bindings::clocks::monotonic_clock::Host
-            + bindings::clocks::wall_clock::Host,
-    > wasi_snapshot_preview1::WasiSnapshotPreview1 for T
-{
+impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiPreview1View {
     #[instrument(skip(self))]
     fn args_get<'b>(
         &mut self,
@@ -1323,7 +1311,7 @@ impl<
                 blocking_mode,
                 position,
                 ..
-            }) if t.view.table().get(fd)?.is_file() => {
+            }) if t.view.wasi.table.get(fd)?.is_file() => {
                 let fd = fd.borrowed();
                 let blocking_mode = *blocking_mode;
                 let position = position.clone();
@@ -1379,7 +1367,7 @@ impl<
         let (mut buf, read) = match desc {
             Descriptor::File(File {
                 fd, blocking_mode, ..
-            }) if t.view.table().get(fd)?.is_file() => {
+            }) if t.view.wasi.table.get(fd)?.is_file() => {
                 let fd = fd.borrowed();
                 let blocking_mode = *blocking_mode;
                 drop(t);
@@ -1426,7 +1414,7 @@ impl<
                 blocking_mode,
                 append,
                 position,
-            }) if t.view.table().get(fd)?.is_file() => {
+            }) if t.view.wasi.table.get(fd)?.is_file() => {
                 let fd = fd.borrowed();
                 let fd2 = fd.borrowed();
                 let blocking_mode = *blocking_mode;
@@ -1493,7 +1481,7 @@ impl<
         let n = match desc {
             Descriptor::File(File {
                 fd, blocking_mode, ..
-            }) if t.view.table().get(fd)?.is_file() => {
+            }) if t.view.wasi.table.get(fd)?.is_file() => {
                 let fd = fd.borrowed();
                 let blocking_mode = *blocking_mode;
                 drop(t);
@@ -1657,7 +1645,7 @@ impl<
 
         let mut dir = Vec::new();
         for (entry, d_next) in self
-            .table_mut()
+            .table
             // remove iterator from table and use it directly:
             .delete(stream)?
             .into_iter()
