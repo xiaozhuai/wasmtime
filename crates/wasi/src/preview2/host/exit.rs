@@ -1,6 +1,6 @@
 use crate::preview2::{bindings::cli::exit, I32Exit, WasiView};
 
-impl exit::Host for WasiView {
+impl exit::Host for WasiView<'_> {
     fn exit(&mut self, status: Result<(), ()>) -> anyhow::Result<()> {
         let status = match status {
             Ok(()) => 0,

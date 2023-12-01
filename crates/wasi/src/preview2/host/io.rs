@@ -6,9 +6,9 @@ use crate::preview2::{
 };
 use wasmtime::component::Resource;
 
-impl error::Host for WasiView {}
+impl error::Host for WasiView<'_> {}
 
-impl streams::Host for WasiView {
+impl streams::Host for WasiView<'_> {
     fn convert_stream_error(&mut self, err: StreamError) -> anyhow::Result<streams::StreamError> {
         match err {
             StreamError::Closed => Ok(streams::StreamError::Closed),
@@ -20,7 +20,7 @@ impl streams::Host for WasiView {
     }
 }
 
-impl error::HostError for WasiView {
+impl error::HostError for WasiView<'_> {
     fn drop(&mut self, err: Resource<streams::Error>) -> anyhow::Result<()> {
         self.table.delete(err)?;
         Ok(())
@@ -32,7 +32,7 @@ impl error::HostError for WasiView {
 }
 
 #[async_trait::async_trait]
-impl streams::HostOutputStream for WasiView {
+impl streams::HostOutputStream for WasiView<'_> {
     fn drop(&mut self, stream: Resource<OutputStream>) -> anyhow::Result<()> {
         self.table.delete(stream)?;
         Ok(())
@@ -172,7 +172,7 @@ impl streams::HostOutputStream for WasiView {
 }
 
 #[async_trait::async_trait]
-impl streams::HostInputStream for WasiView {
+impl streams::HostInputStream for WasiView<'_> {
     fn drop(&mut self, stream: Resource<InputStream>) -> anyhow::Result<()> {
         self.table.delete(stream)?;
         Ok(())
@@ -245,7 +245,7 @@ pub mod sync {
         }
     }
 
-    impl streams::Host for WasiView {
+    impl streams::Host for WasiView<'_> {
         fn convert_stream_error(
             &mut self,
             err: StreamError,
@@ -254,7 +254,7 @@ pub mod sync {
         }
     }
 
-    impl streams::HostOutputStream for WasiView {
+    impl streams::HostOutputStream for WasiView<'_> {
         fn drop(&mut self, stream: Resource<OutputStream>) -> anyhow::Result<()> {
             AsyncHostOutputStream::drop(self, stream)
         }
@@ -331,7 +331,7 @@ pub mod sync {
         }
     }
 
-    impl streams::HostInputStream for WasiView {
+    impl streams::HostInputStream for WasiView<'_> {
         fn drop(&mut self, stream: Resource<InputStream>) -> anyhow::Result<()> {
             AsyncHostInputStream::drop(self, stream)
         }

@@ -19,7 +19,7 @@ pub enum ResolveAddressStream {
 }
 
 #[async_trait::async_trait]
-impl Host for WasiView {
+impl Host for WasiView<'_> {
     fn resolve_addresses(
         &mut self,
         network: Resource<Network>,
@@ -40,7 +40,7 @@ impl Host for WasiView {
 }
 
 #[async_trait::async_trait]
-impl HostResolveAddressStream for WasiView {
+impl HostResolveAddressStream for WasiView<'_> {
     fn resolve_next_address(
         &mut self,
         resource: Resource<ResolveAddressStream>,

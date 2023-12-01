@@ -8,13 +8,13 @@ use rustix::io::Errno;
 use std::io;
 use wasmtime::component::Resource;
 
-impl network::Host for WasiView {
+impl network::Host for WasiView<'_> {
     fn convert_error_code(&mut self, error: SocketError) -> anyhow::Result<ErrorCode> {
         error.downcast()
     }
 }
 
-impl crate::preview2::bindings::sockets::network::HostNetwork for WasiView {
+impl crate::preview2::bindings::sockets::network::HostNetwork for WasiView<'_> {
     fn drop(&mut self, this: Resource<network::Network>) -> Result<(), anyhow::Error> {
         self.table.delete(this)?;
         Ok(())

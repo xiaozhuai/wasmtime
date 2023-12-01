@@ -12,7 +12,7 @@ use wasmtime::component::{Resource, ResourceTable};
 
 mod sync;
 
-impl preopens::Host for WasiView {
+impl preopens::Host for WasiView<'_> {
     fn get_directories(
         &mut self,
     ) -> Result<Vec<(Resource<types::Descriptor>, String)>, anyhow::Error> {
@@ -29,7 +29,7 @@ impl preopens::Host for WasiView {
 }
 
 #[async_trait::async_trait]
-impl types::Host for WasiView {
+impl types::Host for WasiView<'_> {
     fn convert_error_code(&mut self, err: FsError) -> anyhow::Result<ErrorCode> {
         err.downcast()
     }
@@ -51,7 +51,7 @@ impl types::Host for WasiView {
 }
 
 #[async_trait::async_trait]
-impl HostDescriptor for WasiView {
+impl HostDescriptor for WasiView<'_> {
     async fn advise(
         &mut self,
         fd: Resource<types::Descriptor>,
@@ -71,16 +71,14 @@ impl HostDescriptor for WasiView {
             Advice::NoReuse => A::NoReuse,
         };
 
-        let f = self.table().get(&fd)?.file()?;
+        let f = self.table.get(&fd)?.file()?;
         f.spawn_blocking(move |f| f.advise(offset, len, advice))
             .await?;
         Ok(())
     }
 
     async fn sync_data(&mut self, fd: Resource<types::Descriptor>) -> FsResult<()> {
-        let table = self.table();
-
-        match table.get(&fd)? {
+        match self.table.get(&fd)? {
             Descriptor::File(f) => {
                 match f.spawn_blocking(|f| f.sync_data()).await {
                     Ok(()) => Ok(()),
@@ -125,8 +123,7 @@ impl HostDescriptor for WasiView {
             out
         }
 
-        let table = self.table();
-        match table.get(&fd)? {
+        match self.table.get(&fd)? {
             Descriptor::File(f) => {
                 let flags = f.spawn_blocking(|f| f.get_fd_flags()).await?;
                 let mut flags = get_from_fdflags(flags);
@@ -156,9 +153,7 @@ impl HostDescriptor for WasiView {
         &mut self,
         fd: Resource<types::Descriptor>,
     ) -> FsResult<types::DescriptorType> {
-        let table = self.table();
-
-        match table.get(&fd)? {
+        match self.table.get(&fd)? {
             Descriptor::File(f) => {
                 let meta = f.spawn_blocking(|f| f.metadata()).await?;
                 Ok(descriptortype_from(meta.file_type()))
@@ -172,7 +167,7 @@ impl HostDescriptor for WasiView {
         fd: Resource<types::Descriptor>,
         size: types::Filesize,
     ) -> FsResult<()> {
-        let f = self.table().get(&fd)?.file()?;
+        let f = self.table.get(&fd)?.file()?;
         if !f.perms.contains(FilePerms::WRITE) {
             Err(ErrorCode::NotPermitted)?;
         }
@@ -187,9 +182,7 @@ impl HostDescriptor for WasiView {
         mtim: types::NewTimestamp,
     ) -> FsResult<()> {
         use fs_set_times::SetTimes;
-
-        let table = self.table();
-        match table.get(&fd)? {
+        match self.table.get(&fd)? {
             Descriptor::File(f) => {
                 if !f.perms.contains(FilePerms::WRITE) {
                     return Err(ErrorCode::NotPermitted.into());
@@ -220,9 +213,7 @@ impl HostDescriptor for WasiView {
         use std::io::IoSliceMut;
         use system_interface::fs::FileIoExt;
 
-        let table = self.table();
-
-        let f = table.get(&fd)?.file()?;
+        let f = self.table.get(&fd)?.file()?;
         if !f.perms.contains(FilePerms::READ) {
             return Err(ErrorCode::NotPermitted.into());
         }
@@ -258,8 +249,7 @@ impl HostDescriptor for WasiView {
         use std::io::IoSlice;
         use system_interface::fs::FileIoExt;
 
-        let table = self.table();
-        let f = table.get(&fd)?.file()?;
+        let f = self.table.get(&fd)?.file()?;
         if !f.perms.contains(FilePerms::WRITE) {
             return Err(ErrorCode::NotPermitted.into());
         }
@@ -806,7 +796,7 @@ impl HostDescriptor for WasiView {
 }
 
 #[async_trait::async_trait]
-impl HostDirectoryEntryStream for WasiView {
+impl HostDirectoryEntryStream for WasiView<'_> {
     async fn read_directory_entry(
         &mut self,
         stream: Resource<types::DirectoryEntryStream>,

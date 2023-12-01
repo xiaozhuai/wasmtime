@@ -3,7 +3,7 @@ use crate::preview2::tcp::TcpSocket;
 use crate::preview2::{SocketResult, WasiView};
 use wasmtime::component::Resource;
 
-impl tcp_create_socket::Host for WasiView {
+impl tcp_create_socket::Host for WasiView<'_> {
     fn create_tcp_socket(
         &mut self,
         address_family: IpAddressFamily,

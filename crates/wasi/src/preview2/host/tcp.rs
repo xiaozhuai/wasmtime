@@ -19,9 +19,9 @@ use std::time::Duration;
 use tokio::io::Interest;
 use wasmtime::component::Resource;
 
-impl tcp::Host for WasiView {}
+impl tcp::Host for WasiView<'_> {}
 
-impl crate::preview2::host::tcp::tcp::HostTcpSocket for WasiView {
+impl crate::preview2::host::tcp::tcp::HostTcpSocket for WasiView<'_> {
     fn start_bind(
         &mut self,
         this: Resource<tcp::TcpSocket>,

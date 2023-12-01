@@ -26,9 +26,9 @@ wasmtime::component::bindgen!({
     },
 });
 
-pub fn add_to_linker<T>(
+pub fn add_to_linker<T: Send>(
     l: &mut wasmtime::component::Linker<T>,
-    f: impl Fn(&mut T) -> WasiView,
+    f: impl Fn(&mut T) -> WasiView + Send + Sync + Copy,
 ) -> anyhow::Result<()> {
     crate::preview2::bindings::clocks::wall_clock::add_to_linker(l, f)?;
     crate::preview2::bindings::clocks::monotonic_clock::add_to_linker(l, f)?;
@@ -90,37 +90,37 @@ pub mod sync {
         },
     });
 
-    pub fn add_to_linker<T>(
+    pub fn add_to_linker<T: Send>(
         l: &mut wasmtime::component::Linker<T>,
-        f: impl Fn(&mut T) -> WasiView,
+        f: impl Fn(&mut T) -> WasiView + Send + Sync + Copy,
     ) -> anyhow::Result<()> {
-        crate::preview2::bindings::clocks::wall_clock::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::clocks::monotonic_clock::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sync_io::filesystem::types::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::filesystem::preopens::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::io::error::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sync_io::io::poll::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sync_io::io::streams::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::random::random::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::random::insecure::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::random::insecure_seed::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::exit::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::environment::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::stdin::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::stdout::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::stderr::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::terminal_input::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::terminal_output::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::terminal_stdin::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::terminal_stdout::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::cli::terminal_stderr::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::tcp::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::tcp_create_socket::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::udp::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::udp_create_socket::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::instance_network::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::network::add_to_linker(l, |t| t)?;
-        crate::preview2::bindings::sockets::ip_name_lookup::add_to_linker(l, |t| t)?;
+        crate::preview2::bindings::clocks::wall_clock::add_to_linker(l, f)?;
+        crate::preview2::bindings::clocks::monotonic_clock::add_to_linker(l, f)?;
+        crate::preview2::bindings::sync_io::filesystem::types::add_to_linker(l, f)?;
+        crate::preview2::bindings::filesystem::preopens::add_to_linker(l, f)?;
+        crate::preview2::bindings::io::error::add_to_linker(l, f)?;
+        crate::preview2::bindings::sync_io::io::poll::add_to_linker(l, f)?;
+        crate::preview2::bindings::sync_io::io::streams::add_to_linker(l, f)?;
+        crate::preview2::bindings::random::random::add_to_linker(l, f)?;
+        crate::preview2::bindings::random::insecure::add_to_linker(l, f)?;
+        crate::preview2::bindings::random::insecure_seed::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::exit::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::environment::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::stdin::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::stdout::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::stderr::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::terminal_input::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::terminal_output::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::terminal_stdin::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::terminal_stdout::add_to_linker(l, f)?;
+        crate::preview2::bindings::cli::terminal_stderr::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::tcp::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::tcp_create_socket::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::udp::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::udp_create_socket::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::instance_network::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::network::add_to_linker(l, f)?;
+        crate::preview2::bindings::sockets::ip_name_lookup::add_to_linker(l, f)?;
         Ok(())
     }
 }

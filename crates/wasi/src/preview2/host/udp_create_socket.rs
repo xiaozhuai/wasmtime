@@ -3,7 +3,7 @@ use crate::preview2::udp::UdpSocket;
 use crate::preview2::{SocketResult, WasiView};
 use wasmtime::component::Resource;
 
-impl udp_create_socket::Host for WasiView {
+impl udp_create_socket::Host for WasiView<'_> {
     fn create_udp_socket(
         &mut self,
         address_family: IpAddressFamily,
