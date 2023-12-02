@@ -302,11 +302,6 @@ impl WasiCtxBuilder {
     }
 }
 
-pub struct WasiView<'a> {
-    pub table: &'a mut ResourceTable,
-    pub ctx: &'a mut WasiCtx,
-}
-
 pub struct WasiCtx {
     pub(crate) random: Box<dyn RngCore + Send + Sync>,
     pub(crate) insecure_random: Box<dyn RngCore + Send + Sync>,
@@ -321,4 +316,9 @@ pub struct WasiCtx {
     pub(crate) stderr: Box<dyn StdoutStream>,
     pub(crate) pool: Pool,
     pub(crate) allow_ip_name_lookup: bool,
+}
+
+pub struct WasiView<'a> {
+    pub table: &'a mut ResourceTable,
+    pub ctx: &'a mut WasiCtx,
 }
