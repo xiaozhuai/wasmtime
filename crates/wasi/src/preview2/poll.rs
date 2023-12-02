@@ -68,14 +68,12 @@ impl poll::Host for WasiView<'_> {
     async fn poll(&mut self, pollables: Vec<Resource<Pollable>>) -> Result<Vec<u32>> {
         type ReadylistIndex = u32;
 
-        let table = self.table;
-
         let mut table_futures: HashMap<u32, (MakeFuture, Vec<ReadylistIndex>)> = HashMap::new();
 
         for (ix, p) in pollables.iter().enumerate() {
             let ix: u32 = ix.try_into()?;
 
-            let pollable = table.get(p)?;
+            let pollable = self.table.get(p)?;
             let (_, list) = table_futures
                 .entry(pollable.index)
                 .or_insert((pollable.make_future, Vec::new()));
@@ -83,7 +81,7 @@ impl poll::Host for WasiView<'_> {
         }
 
         let mut futures: Vec<(PollableFuture<'_>, Vec<ReadylistIndex>)> = Vec::new();
-        for (entry, (make_future, readylist_indices)) in table.iter_entries(table_futures) {
+        for (entry, (make_future, readylist_indices)) in self.table.iter_entries(table_futures) {
             let entry = entry?;
             futures.push((make_future(entry), readylist_indices));
         }
@@ -121,16 +119,14 @@ impl poll::Host for WasiView<'_> {
 #[async_trait::async_trait]
 impl crate::preview2::bindings::io::poll::HostPollable for WasiView<'_> {
     async fn block(&mut self, pollable: Resource<Pollable>) -> Result<()> {
-        let table = self.table;
-        let pollable = table.get(&pollable)?;
-        let ready = (pollable.make_future)(table.get_any_mut(pollable.index)?);
+        let pollable = self.table.get(&pollable)?;
+        let ready = (pollable.make_future)(self.table.get_any_mut(pollable.index)?);
         ready.await;
         Ok(())
     }
     async fn ready(&mut self, pollable: Resource<Pollable>) -> Result<bool> {
-        let table = self.table;
-        let pollable = table.get(&pollable)?;
-        let ready = (pollable.make_future)(table.get_any_mut(pollable.index)?);
+        let pollable = self.table.get(&pollable)?;
+        let ready = (pollable.make_future)(self.table.get_any_mut(pollable.index)?);
         futures::pin_mut!(ready);
         Ok(matches!(
             futures::future::poll_immediate(ready).await,
