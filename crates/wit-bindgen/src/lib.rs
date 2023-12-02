@@ -747,18 +747,17 @@ impl Wasmtime {
         uwrite!(
             self.src,
             "
-                pub fn add_to_linker<T, U>(
+                pub fn add_to_linker<T>(
                     linker: &mut wasmtime::component::Linker<T>,
-                    get: impl Fn(&mut T) -> &mut U + Send + Sync + Copy + 'static,
                 ) -> wasmtime::Result<()>
-                    where U: \
+                    where T: \
             "
         );
         let world_camel = to_rust_upper_camel_case(&resolve.worlds[world].name);
         let world_trait = format!("{world_camel}Imports");
         for (i, name) in interfaces
             .iter()
-            .map(|n| format!("{n}::Host"))
+            .map(|n| format!("{n}::AsHost"))
             .chain(if has_world_trait {
                 Some(world_trait.clone())
             } else {
@@ -773,7 +772,7 @@ impl Wasmtime {
         }
 
         let maybe_send = if self.opts.async_.maybe_async() {
-            " + Send, T: Send"
+            " + Send"
         } else {
             ""
         };
@@ -781,10 +780,10 @@ impl Wasmtime {
         self.src.push_str(maybe_send);
         self.src.push_str(",\n{\n");
         for name in interfaces.iter() {
-            uwriteln!(self.src, "{name}::add_to_linker(linker, get)?;");
+            uwriteln!(self.src, "{name}::add_to_linker(linker)?;");
         }
         if has_world_trait {
-            uwriteln!(self.src, "Self::add_root_to_linker(linker, get)?;");
+            uwriteln!(self.src, "Self::add_root_to_linker(linker)?;");
         }
         uwriteln!(self.src, "Ok(())\n}}");
         if !has_world_trait {
@@ -1576,25 +1575,35 @@ impl<'a> InterfaceGenerator<'a> {
         }
         uwriteln!(self.src, "}}");
 
-        let mut where_clause = if self.gen.opts.async_.maybe_async() {
-            "T: Send, U: Host + Send".to_string()
+        let maybe_send = if self.gen.opts.async_.maybe_async() {
+            ": Send + 'static".to_string()
         } else {
-            "U: Host".to_string()
+            "".to_string()
+        };
+
+        let mut ctx_bound = if self.gen.opts.async_.maybe_async() {
+            "Host + Send".to_string()
+        } else {
+            "Host".to_string()
         };
 
         for t in required_conversion_traits {
-            where_clause.push_str(" + ");
-            where_clause.push_str(&t);
+            ctx_bound.push_str(" + ");
+            ctx_bound.push_str(&t);
         }
 
         uwriteln!(
             self.src,
             "
-                pub fn add_to_linker<T, U>(
+                pub trait AsHost {maybe_send} {{
+                    type Ctx<'a>: {ctx_bound}
+                    where
+                        Self: 'a;
+                    fn as_host(&mut self) -> Self::Ctx<'_>;
+                }}
+                pub fn add_to_linker<T: AsHost>(
                     linker: &mut wasmtime::component::Linker<T>,
-                    get: impl Fn(&mut T) -> &mut U + Send + Sync + Copy + 'static,
                 ) -> wasmtime::Result<()>
-                    where {where_clause}
                 {{
             "
         );
@@ -1607,7 +1616,7 @@ impl<'a> InterfaceGenerator<'a> {
                 "inst.resource::<{camel}>(
                     \"{name}\",
                     move |mut store, rep| -> wasmtime::Result<()> {{
-                        Host{camel}::drop(get(store.data_mut()), wasmtime::component::Resource::new_own(rep))
+                        Host{camel}::drop(&mut store.data_mut().as_host(), wasmtime::component::Resource::new_own(rep))
                     }},
                 )?;"
             )
@@ -1698,7 +1707,8 @@ impl<'a> InterfaceGenerator<'a> {
             );
         }
 
-        self.src.push_str("let host = get(caller.data_mut());\n");
+        self.src.push_str("let data = caller.data_mut();\n");
+        self.src.push_str("let host = &mut data.as_host();\n");
         let func_name = rust_function_name(func);
         let host_trait = match func.kind {
             FunctionKind::Freestanding => match owner {
