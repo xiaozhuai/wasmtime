@@ -201,8 +201,14 @@ impl RunCommand {
                 wasmtime_wasi_nn::witx::add_to_linker(&mut linker, |host| {
                     host.wasi_nn.as_mut().expect("WasiNnCtx present")
                 })?;
-                self.set_nn_ctx(&mut store)?;
+                store.data_mut().wasi_nn = Some(self.build_nn_ctx()?);
             }
+        }
+
+        if self.run.common.wasi.threads == Some(true) {
+            bail!(
+                "cannot enable wasi-threads for core wasm modules: legacy implementation required"
+            )
         }
 
         if self.run.common.wasi.http == Some(true) {
@@ -365,7 +371,7 @@ impl RunCommand {
                 wasmtime_wasi_nn::wit::ML::add_to_linker(&mut linker, |host| {
                     host.wasi_nn.as_mut().expect("WasiNnCtx present")
                 })?;
-                self.set_nn_ctx(&mut store)?;
+                store.data_mut().wasi_nn = Some(self.build_nn_ctx()?);
             }
         }
 
@@ -418,6 +424,8 @@ impl RunCommand {
             .call_run(&mut store)
             .context("failed to invoke `run` function")
             .map_err(|e| self.handle_core_dump(&mut store, e));
+
+        finish_epoch_handler(&mut store);
 
         match result.with_context(|| {
             format!(
@@ -778,7 +786,7 @@ impl RunCommand {
     }
 
     #[cfg(feature = "wasi-nn")]
-    fn set_nn_ctx(&self, store: &mut Store<Host>) -> Result<()> {
+    fn build_nn_ctx(&self) -> Result<WasiNnCtx> {
         let graphs = self
             .run
             .common
@@ -788,8 +796,7 @@ impl RunCommand {
             .map(|g| (g.format.clone(), g.dir.clone()))
             .collect::<Vec<_>>();
         let (backends, registry) = wasmtime_wasi_nn::preload(&graphs)?;
-        store.data_mut().wasi_nn = Some(WasiNnCtx::new(backends, registry));
-        Ok(())
+        Ok(WasiNnCtx::new(backends, registry))
     }
 }
 
