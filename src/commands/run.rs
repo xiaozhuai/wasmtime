@@ -156,6 +156,10 @@ impl RunCommand {
                     // default-enabled but this may turn into
                     // default-disabled in the future.
                     (Some(true), _) | (None, Some(false) | None) => {
+                        // TOKIO FIXES:
+                        // Engine needs to have Config::enable_async(true)
+                        // then do a tokio::runtime::Runtime::new() here and block_on
+                        // wrapping execute_module
                         self.execute_module(engine, main)
                     }
                 }
@@ -165,6 +169,7 @@ impl RunCommand {
         }
     }
 
+    // TOKIO FIXES this becomes an async fn
     fn execute_module(self, engine: Engine, main: Module) -> Result<()> {
         let mut linker: wasmtime::Linker<Host> = wasmtime::Linker::new(&engine);
         if let Some(enable) = self.run.common.wasm.unknown_exports_allow {
@@ -183,8 +188,10 @@ impl RunCommand {
             // default-disabled in the future.
             Some(true) | None => {
                 if self.run.common.wasi.preview0 != Some(false) {
+                    // TOKIO FIXES use add_to_linker_async here
                     wasmtime_wasi::preview0::add_to_linker_sync(&mut linker)?;
                 }
+                // TOKIO FIXES use add_to_linker_async here
                 wasmtime_wasi::preview1::add_to_linker_sync(&mut linker)?;
                 self.set_preview2_ctx(&mut store)?;
             }
@@ -332,6 +339,7 @@ impl RunCommand {
         }
     }
 
+    // TOKIO FIXES this becomes async fn
     #[cfg(feature = "component-model")]
     fn execute_component(
         mut self,
@@ -355,6 +363,7 @@ impl RunCommand {
             // default-enabled but this may turn into
             // default-disabled in the future.
             Some(true) | None => {
+                // TOKIO FIXES this uses command::add_to_linker to get the async linker.
                 wasmtime_wasi::command::sync::add_to_linker(&mut linker)?;
                 self.set_preview2_ctx(&mut store)?;
             }
@@ -382,6 +391,7 @@ impl RunCommand {
             }
             #[cfg(all(feature = "wasi-http", feature = "component-model"))]
             {
+                // TOKIO FIXES this uses proxy::add_to_linker to get the async linker.
                 wasmtime_wasi_http::proxy::sync::add_only_http_to_linker(&mut linker)?;
                 store.data_mut().wasi_http = Some(WasiHttpCtx {});
             }

@@ -224,22 +224,20 @@ impl RunCommand {
                 // Exit the process if Wasmtime understands the error;
                 // otherwise, fall back on Rust's default error printing/return
                 // code.
-                if store.data().preview2_ctx.is_some() {
-                    if let Some(exit) = e
-                        .downcast_ref::<wasmtime_wasi::I32Exit>()
-                        .map(|c| c.process_exit_code())
-                    {
-                        std::process::exit(exit);
-                    }
-                    if e.is::<wasmtime::Trap>() {
-                        eprintln!("Error: {e:?}");
-                        cfg_if::cfg_if! {
-                            if #[cfg(unix)] {
-                                std::process::exit(rustix::process::EXIT_SIGNALED_SIGABRT);
-                            } else if #[cfg(windows)] {
-                                // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/abort?view=vs-2019
-                                std::process::exit(3);
-                            }
+                if let Some(exit) = e
+                    .downcast_ref::<wasi_common::I32Exit>()
+                    .map(|c| c.process_exit_code())
+                {
+                    std::process::exit(exit);
+                }
+                if e.is::<wasmtime::Trap>() {
+                    eprintln!("Error: {e:?}");
+                    cfg_if::cfg_if! {
+                        if #[cfg(unix)] {
+                            std::process::exit(rustix::process::EXIT_SIGNALED_SIGABRT);
+                        } else if #[cfg(windows)] {
+                            // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/abort?view=vs-2019
+                            std::process::exit(3);
                         }
                     }
                 }
