@@ -1,0 +1,23 @@
+[package]
+name = "cranelift-assembler"
+description = "A Cranelift-specific x64 assembler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arbitrary = { version = "1.3.2", features = ["derive"] }
+capstone = "0.12.0"
+cranelift-codegen = { path = "../codegen" }
+
+[dev-dependencies]
+arbtest = "0.3.1"
+
+[build-dependencies]
+cranelift-assembler-meta = { path = "meta" }
+
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+wildcard_imports = { level = "allow", priority = 1 }
+similar_names = { level = "allow", priority = 1 }
+non_camel_case_types = { level = "allow", priority = 1 }

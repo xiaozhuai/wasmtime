@@ -1,0 +1,206 @@
+//! Memory operands to instructions.
+
+use crate::imm::Simm32;
+use crate::reg::{self, Gpr, Gpr2MinusRsp, Size};
+use arbitrary::Arbitrary;
+use cranelift_codegen::ir::MemFlags;
+use cranelift_codegen::isa::x64::encoding::rex::{encode_modrm, encode_sib, Imm, RexFlags};
+use cranelift_codegen::isa::x64::encoding::ByteSink;
+use cranelift_codegen::MachLabel;
+
+#[derive(Clone, Debug, Arbitrary)]
+pub enum Amode {
+    ImmReg {
+        simm32: Simm32,
+        base: Gpr,
+        flags: MemFlags,
+    },
+    ImmRegRegShift {
+        simm32: Simm32,
+        base: Gpr,
+        index: Gpr2MinusRsp,
+        scale: Scale,
+        flags: MemFlags,
+    },
+    RipRelative {
+        target: MachLabel,
+    },
+}
+impl Amode {
+    #[must_use]
+    pub fn get_flags(&self) -> MemFlags {
+        match self {
+            Amode::ImmReg { flags, .. } | Amode::ImmRegRegShift { flags, .. } => *flags,
+            Amode::RipRelative { .. } => MemFlags::trusted(),
+        }
+    }
+
+    pub fn emit_rex_prefix<BS: ByteSink + ?Sized>(&self, rex: RexFlags, enc_g: u8, sink: &mut BS) {
+        match self {
+            Amode::ImmReg { base, .. } => {
+                let enc_e = base.enc();
+                rex.emit_two_op(sink, enc_g, enc_e);
+            }
+            Amode::ImmRegRegShift { base: reg_base, index: reg_index, .. } => {
+                let enc_base = reg_base.enc();
+                let enc_index = reg_index.enc();
+                rex.emit_three_op(sink, enc_g, enc_index, enc_base);
+            }
+            Amode::RipRelative { .. } => {
+                // note REX.B = 0.
+                rex.emit_two_op(sink, enc_g, 0);
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for Amode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Amode::ImmReg { simm32, base, .. } => {
+                // Note: size is always 8; the address is 64 bits,
+                // even if the addressed operand is smaller.
+                write!(f, "{:x}({})", simm32, base.to_string(Size::Quadword))
+            }
+            Amode::ImmRegRegShift { simm32, base, index, scale, .. } => {
+                if scale.shift() > 1 {
+                    write!(
+                        f,
+                        "{:x}({}, {}, {})",
+                        simm32,
+                        base.to_string(Size::Quadword),
+                        index.to_string(Size::Quadword),
+                        scale.shift()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "{:x}({}, {})",
+                        simm32,
+                        base.to_string(Size::Quadword),
+                        index.to_string(Size::Quadword)
+                    )
+                }
+            }
+            Amode::RipRelative { .. } => write!(f, "(%rip)"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Arbitrary)]
+pub enum Scale {
+    One,
+    Two,
+    Four,
+    Eight,
+}
+impl Scale {
+    fn enc(&self) -> u8 {
+        match self {
+            Scale::One => 0b00,
+            Scale::Two => 0b01,
+            Scale::Four => 0b10,
+            Scale::Eight => 0b11,
+        }
+    }
+    fn shift(&self) -> u8 {
+        1 << self.enc()
+    }
+}
+
+#[derive(Debug, Arbitrary)]
+pub enum GprMem {
+    Gpr(Gpr),
+    Mem(Amode),
+}
+impl GprMem {
+    pub fn to_string(&self, size: Size) -> String {
+        match self {
+            GprMem::Gpr(gpr2) => gpr2.to_string(size).to_owned(),
+            GprMem::Mem(amode) => amode.to_string(),
+        }
+    }
+}
+
+pub fn emit_modrm_sib_disp<BS: ByteSink + ?Sized>(
+    sink: &mut BS,
+    enc_g: u8,
+    mem_e: &Amode,
+    bytes_at_end: u8,
+    evex_scaling: Option<i8>,
+) {
+    match mem_e.clone() {
+        Amode::ImmReg { simm32, base, .. } => {
+            let enc_e = base.enc();
+            let mut imm = Imm::new(simm32.0, evex_scaling);
+
+            // Most base registers allow for a single ModRM byte plus an
+            // optional immediate. If rsp is the base register, however, then a
+            // SIB byte must be used.
+            let enc_e_low3 = enc_e & 7;
+            if enc_e_low3 == reg::ENC_RSP {
+                // Displacement from RSP is encoded with a SIB byte where
+                // the index and base are both encoded as RSP's encoding of
+                // 0b100. This special encoding means that the index register
+                // isn't used and the base is 0b100 with or without a
+                // REX-encoded 4th bit (e.g. rsp or r12)
+                sink.put1(encode_modrm(imm.m0d(), enc_g & 7, 0b100));
+                sink.put1(0b00_100_100);
+                imm.emit(sink);
+            } else {
+                // If the base register is rbp and there's no offset then force
+                // a 1-byte zero offset since otherwise the encoding would be
+                // invalid.
+                if enc_e_low3 == reg::ENC_RBP {
+                    imm.force_immediate();
+                }
+                sink.put1(encode_modrm(imm.m0d(), enc_g & 7, enc_e & 7));
+                imm.emit(sink);
+            }
+        }
+
+        Amode::ImmRegRegShift {
+            simm32, base: reg_base, index: reg_index, scale, ..
+        } => {
+            let enc_base = reg_base.enc();
+            let enc_index = reg_index.enc();
+
+            // Encoding of ModRM/SIB bytes don't allow the index register to
+            // ever be rsp. Note, though, that the encoding of r12, whose three
+            // lower bits match the encoding of rsp, is explicitly allowed with
+            // REX bytes so only rsp is disallowed.
+            assert!(enc_index != reg::ENC_RSP);
+
+            // If the offset is zero then there is no immediate. Note, though,
+            // that if the base register's lower three bits are `101` then an
+            // offset must be present. This is a special case in the encoding of
+            // the SIB byte and requires an explicit displacement with rbp/r13.
+            let mut imm = Imm::new(simm32.0, evex_scaling);
+            if enc_base & 7 == reg::ENC_RBP {
+                imm.force_immediate();
+            }
+
+            // With the above determined encode the ModRM byte, then the SIB
+            // byte, then any immediate as necessary.
+            sink.put1(encode_modrm(imm.m0d(), enc_g & 7, 0b100));
+            sink.put1(encode_sib(scale.enc(), enc_index & 7, enc_base & 7));
+            imm.emit(sink);
+        }
+
+        Amode::RipRelative { target: _ } => {
+            // RIP-relative is mod=00, rm=101.
+            sink.put1(encode_modrm(0b00, enc_g & 7, 0b101));
+
+            let _offset = sink.cur_offset();
+            // TODO sink.use_label_at_offset(offset, *target, LabelUse::JmpRel32);
+            // N.B.: some instructions (XmmRmRImm format for example)
+            // have bytes *after* the RIP-relative offset. The
+            // addressed location is relative to the end of the
+            // instruction, but the relocation is nominally relative
+            // to the end of the u32 field. So, to compensate for
+            // this, we emit a negative extra offset in the u32 field
+            // initially, and the relocation will add to it.
+            sink.put4(-(i32::from(bytes_at_end)) as u32);
+        }
+    }
+}

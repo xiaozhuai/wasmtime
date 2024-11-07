@@ -134,6 +134,8 @@ opt-level = 0
 resolver = '2'
 members = [
   "cranelift",
+  "cranelift/assembler",
+  "cranelift/assembler/meta",
   "cranelift/isle/fuzz",
   "cranelift/isle/islec",
   "cranelift/isle/veri/veri_engine",

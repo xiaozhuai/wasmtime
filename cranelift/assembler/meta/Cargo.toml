@@ -1,0 +1,14 @@
+[package]
+name = "cranelift-assembler-meta"
+description = "Generate a Cranelift-specific assembler for x64 instructions"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cranelift-codegen-meta = { path = "../../codegen/meta" }
+
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+wildcard_imports = { level = "allow", priority = 1 }
+enum_glob_use = { level = "allow", priority = 1 }

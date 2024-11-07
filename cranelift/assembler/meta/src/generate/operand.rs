@@ -1,0 +1,57 @@
+use crate::dsl;
+
+impl dsl::Operand {
+    /// `<operand type>`
+    #[must_use]
+    pub fn generate_type(&self) -> Option<&str> {
+        use dsl::Operand::*;
+        match self {
+            al | ax | eax | rax => None,
+            imm8 => Some("Imm8"),
+            imm16 => Some("Imm16"),
+            imm32 => Some("Imm32"),
+            r8 | r16 | r32 | r64 => Some("Gpr"),
+            rm8 | rm16 | rm32 | rm64 => Some("GprMem"),
+        }
+    }
+
+    /// `Size::<operand size>`
+    #[must_use]
+    pub fn generate_size(&self) -> Option<&str> {
+        use dsl::Operand::*;
+        match self {
+            al | ax | eax | rax | imm8 | imm16 | imm32 => None,
+            r8 | rm8 => Some("Size::Byte"),
+            r16 | rm16 => Some("Size::Word"),
+            r32 | rm32 => Some("Size::Doubleword"),
+            r64 | rm64 => Some("Size::Quadword"),
+        }
+    }
+
+    /// `<operand>.to_string()`
+    #[must_use]
+    pub fn generate_to_string(&self) -> String {
+        use dsl::Operand::*;
+        match self {
+            al => "\"%al\"".into(),
+            ax => "\"%ax\"".into(),
+            eax => "\"%eax\"".into(),
+            rax => "\"%rax\"".into(),
+            imm8 | imm16 | imm32 => format!("self.{self}.to_string()"),
+            r8 | r16 | r32 | r64 | rm8 | rm16 | rm32 | rm64 => match self.generate_size() {
+                Some(size) => format!("self.{self}.to_string({size})"),
+                None => unreachable!(),
+            },
+        }
+    }
+
+    /// `Gpr(regs::...)`
+    #[must_use]
+    pub fn generate_fixed_reg(&self) -> Option<&str> {
+        use dsl::Operand::*;
+        match self {
+            al | ax | eax | rax => Some("Gpr(reg::ENC_RAX)"),
+            imm8 | imm16 | imm32 | r8 | r16 | r32 | r64 | rm8 | rm16 | rm32 | rm64 => None,
+        }
+    }
+}
