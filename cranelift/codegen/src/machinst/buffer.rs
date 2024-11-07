@@ -381,7 +381,7 @@ const LABEL_LIST_THRESHOLD: usize = 100;
 /// the point at which it is used by emitted code; the buffer records "fixups"
 /// for references to the label, and will come back and patch the code
 /// appropriately when the label's location is eventually known.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, arbitrary::Arbitrary)]
 pub struct MachLabel(u32);
 entity_impl!(MachLabel);
 
