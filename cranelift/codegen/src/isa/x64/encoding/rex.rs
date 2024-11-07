@@ -12,8 +12,8 @@
 
 use super::ByteSink;
 use crate::isa::x64::inst::args::{Amode, OperandSize};
-use crate::isa::x64::inst::{regs, Inst, LabelUse};
-use crate::machinst::{MachBuffer, Reg, RegClass};
+use crate::isa::x64::inst::{regs, LabelUse};
+use crate::machinst::{Reg, RegClass};
 
 pub(crate) fn low8_will_sign_extend_to_64(x: u32) -> bool {
     let xs = (x as i32) as i64;
@@ -34,8 +34,9 @@ pub fn encode_modrm(m0d: u8, enc_reg_g: u8, rm_e: u8) -> u8 {
     ((m0d & 3) << 6) | ((enc_reg_g & 7) << 3) | (rm_e & 7)
 }
 
+/// TODO
 #[inline(always)]
-pub(crate) fn encode_sib(shift: u8, enc_index: u8, enc_base: u8) -> u8 {
+pub fn encode_sib(shift: u8, enc_index: u8, enc_base: u8) -> u8 {
     debug_assert!(shift < 4);
     debug_assert!(enc_index < 8);
     debug_assert!(enc_base < 8);
@@ -98,7 +99,8 @@ impl RexFlags {
         (self.0 & 2) != 0
     }
 
-    /// Emit the rex prefix if the referenced register would require it for 8-bit operations.
+    /// Emit the rex prefix if the referenced register would require it for
+    /// 8-bit operations.
     #[inline(always)]
     pub fn always_emit_if_8bit_needed(&mut self, reg: Reg) -> &mut Self {
         let enc_reg = int_reg_enc(reg);
@@ -297,8 +299,8 @@ impl Default for LegacyPrefixes {
 /// indicate a 64-bit operation and will be deleted if it is redundant (0x40).  Note that for a
 /// 64-bit operation, the REX prefix will normally never be redundant, since REX.W must be 1 to
 /// indicate a 64-bit operation.
-pub(crate) fn emit_std_enc_mem(
-    sink: &mut MachBuffer<Inst>,
+pub(crate) fn emit_std_enc_mem<BS: ByteSink + ?Sized>(
+    sink: &mut BS,
     prefixes: LegacyPrefixes,
     opcodes: u32,
     mut num_opcodes: usize,
@@ -352,8 +354,9 @@ pub(crate) fn emit_std_enc_mem(
     emit_modrm_sib_disp(sink, enc_g, mem_e, bytes_at_end, None)
 }
 
-pub(crate) fn emit_modrm_sib_disp(
-    sink: &mut MachBuffer<Inst>,
+/// TODO
+pub fn emit_modrm_sib_disp<BS: ByteSink + ?Sized>(
+    sink: &mut BS,
     enc_g: u8,
     mem_e: &Amode,
     bytes_at_end: u8,
@@ -440,7 +443,8 @@ pub(crate) fn emit_modrm_sib_disp(
 }
 
 #[derive(Copy, Clone)]
-enum Imm {
+#[allow(missing_docs)]
+pub enum Imm {
     None,
     Imm8(i8),
     Imm32(i32),
@@ -460,7 +464,7 @@ impl Imm {
     /// The `evex_scaling` factor provided here is `Some(N)` for EVEX
     /// instructions.  This is taken into account where the `Imm` value
     /// contained is the raw byte offset.
-    fn new(val: i32, evex_scaling: Option<i8>) -> Imm {
+    pub fn new(val: i32, evex_scaling: Option<i8>) -> Imm {
         if val == 0 {
             return Imm::None;
         }
@@ -483,7 +487,7 @@ impl Imm {
 
     /// Forces `Imm::None` to become `Imm::Imm8(0)`, used for special cases
     /// where some base registers require an immediate.
-    fn force_immediate(&mut self) {
+    pub fn force_immediate(&mut self) {
         if let Imm::None = self {
             *self = Imm::Imm8(0);
         }
@@ -491,7 +495,7 @@ impl Imm {
 
     /// Returns the two "mod" bits present at the upper bits of the mod/rm
     /// byte.
-    fn m0d(&self) -> u8 {
+    pub fn m0d(&self) -> u8 {
         match self {
             Imm::None => 0b00,
             Imm::Imm8(_) => 0b01,
@@ -499,7 +503,8 @@ impl Imm {
         }
     }
 
-    fn emit<BS: ByteSink + ?Sized>(&self, sink: &mut BS) {
+    /// TODO
+    pub fn emit<BS: ByteSink + ?Sized>(&self, sink: &mut BS) {
         match self {
             Imm::None => {}
             Imm::Imm8(n) => sink.put1(*n as u8),
@@ -546,8 +551,8 @@ pub(crate) fn emit_std_enc_enc<BS: ByteSink + ?Sized>(
 // These are merely wrappers for the above two functions that facilitate passing
 // actual `Reg`s rather than their encodings.
 
-pub(crate) fn emit_std_reg_mem(
-    sink: &mut MachBuffer<Inst>,
+pub(crate) fn emit_std_reg_mem<BS: ByteSink + ?Sized>(
+    sink: &mut BS,
     prefixes: LegacyPrefixes,
     opcodes: u32,
     num_opcodes: usize,
@@ -584,7 +589,7 @@ pub(crate) fn emit_std_reg_reg<BS: ByteSink + ?Sized>(
 }
 
 /// Write a suitable number of bits from an imm64 to the sink.
-pub(crate) fn emit_simm<BS: ByteSink + ?Sized>(sink: &mut BS, size: u8, simm32: u32) {
+pub fn emit_simm<BS: ByteSink + ?Sized>(sink: &mut BS, size: u8, simm32: u32) {
     match size {
         8 | 4 => sink.put4(simm32),
         2 => sink.put2(simm32 as u16),

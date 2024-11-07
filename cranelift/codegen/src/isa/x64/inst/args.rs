@@ -461,7 +461,8 @@ impl Amode {
         }
     }
 
-    pub(crate) fn get_flags(&self) -> MemFlags {
+    /// TODO
+    pub fn get_flags(&self) -> MemFlags {
         match self {
             Amode::ImmReg { flags, .. } | Amode::ImmRegRegShift { flags, .. } => *flags,
             Amode::RipRelative { .. } => MemFlags::trusted(),
@@ -573,7 +574,8 @@ impl SyntheticAmode {
         }
     }
 
-    pub(crate) fn finalize(&self, frame: &FrameLayout, buffer: &mut MachBuffer<Inst>) -> Amode {
+    /// TODO
+    pub fn finalize(&self, frame: &FrameLayout, buffer: &mut MachBuffer<Inst>) -> Amode {
         match self {
             SyntheticAmode::Real(addr) => addr.clone(),
             SyntheticAmode::IncomingArg { offset } => {
