@@ -30,3 +30,24 @@ andw: I(ax, imm16) => 0x25 iw
 andl: I(eax, imm32) => 0x25 id
 ...
 ```
+
+### Troubleshooting
+
+When something goes wrong, it can be helpful to compare the output of this
+assembler with a known-good disassembler like XED.
+
+When testing finds a miscompilation, it prints the emitted bytes. To use XED to
+disassemble this:
+
+```
+$ <path to xed>/obj/wkit/bin/xed -d 4080
+```
+
+To generate the expected bytes:
+
+```
+$ <path to xed>/obj/wkit/bin/xed -64 -A -e AND bpl IMM:48
+```
+
+XED also documents its CLI interface: [Intel XED command
+interface](https://intelxed.github.io/ref-manual/group__CMDLINE.html).

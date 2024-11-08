@@ -40,32 +40,28 @@ impl dsl::Format {
         self.generate_modrm_byte(f, rex);
 
         // Emit immediates.
+        f.comment("Emit immediates.");
+        self.generate_immediates(f);
     }
 
     fn generate_rex_prefix(&self, f: &mut Formatter, rex: &dsl::Rex) {
         use dsl::OperandKind::{FixedReg, Imm, Reg, RegMem};
 
-        match self.operands.as_slice() {
-            [dsl::Operand::r8, _] => {
-                f.line("let mut rex = RexFlags::clear_w();");
-                f.line("self.r8.always_emit_if_8bit_needed(&mut rex);");
+        let rex_flags = if rex.w {
+            "RexFlags::set_w()"
+        } else {
+            "RexFlags::clear_w()"
+        };
+
+        let find_8bit_registers =
+            |o: &dsl::Operand| o.bits() == 8 && matches!(o.kind(), Reg(_) | RegMem(_));
+        if self.operands.iter().any(find_8bit_registers) {
+            f.line(format!("let mut rex = {rex_flags};"));
+            for op in self.operands.iter().copied().filter(find_8bit_registers) {
+                f.line(format!("self.{op}.always_emit_if_8bit_needed(&mut rex);"));
             }
-            [dsl::Operand::rm8, _] => {
-                f.line("let mut rex = RexFlags::clear_w();");
-                f.line("match &self.rm8 {");
-                f.indent(|f| {
-                    f.line("GprMem::Gpr(rm8) => { rm8.always_emit_if_8bit_needed(&mut rex); }");
-                    f.line("GprMem::Mem(_) => {}");
-                });
-                f.line("}");
-            }
-            _ => {
-                if rex.w {
-                    f.line("let rex = RexFlags::set_w();");
-                } else {
-                    f.line("let rex = RexFlags::clear_w();");
-                }
-            }
+        } else {
+            f.line(format!("let rex = {rex_flags};"));
         }
 
         match self.operands_by_kind().as_slice() {
@@ -110,7 +106,7 @@ impl dsl::Format {
                 f.line(format!("match &self.{dst} {{"));
                 f.indent(|f| {
                     f.line(format!(
-                        "GprMem::Gpr({dst}) => rex.emit_two_op(buf, {dst}.enc(), {src}),"
+                        "GprMem::Gpr({dst}) => rex.emit_two_op(buf, {src}, {dst}.enc()),"
                     ));
                     f.line(format!(
                         "GprMem::Mem({dst}) => {dst}.emit_rex_prefix(rex, {src}, buf),"
@@ -126,12 +122,10 @@ impl dsl::Format {
     fn generate_modrm_byte(&self, f: &mut Formatter, rex: &dsl::Rex) {
         use dsl::OperandKind::{FixedReg, Imm, Reg, RegMem};
         match self.operands_by_kind().as_slice() {
-            [FixedReg(_), Imm(imm)] => {
-                f.line(format!("let bytes = {};", imm.bytes()));
-                f.line(format!("let value = self.{imm}.value() as u32;"));
-                f.line("emit_simm(buf, bytes, value);");
+            [FixedReg(_), Imm(_)] => {
+                // No need to emit a ModRM byte: we know the register used.
             }
-            [RegMem(dst), Imm(imm)] => {
+            [RegMem(dst), Imm(_)] => {
                 debug_assert!(rex.digit > 0);
                 f.line(format!("let digit = 0x{:x};", rex.digit));
                 f.line(format!("match &self.{dst} {{"));
@@ -142,9 +136,6 @@ impl dsl::Format {
                     ));
                 });
                 f.line("}");
-                f.line(format!("let bytes = {};", imm.bytes()));
-                f.line(format!("let value = self.{imm}.value() as u32;"));
-                f.line("emit_simm(buf, bytes, value);");
             }
             [Reg(dst), RegMem(src)] => {
                 f.line(format!("let {dst} = self.{dst}.enc();"));
@@ -170,6 +161,21 @@ impl dsl::Format {
             }
 
             unknown => todo!("unknown pattern: {unknown:?}"),
+        }
+    }
+
+    fn generate_immediates(&self, f: &mut Formatter) {
+        use dsl::OperandKind::Imm;
+        match self.operands_by_kind().as_slice() {
+            [_, Imm(imm)] => {
+                f.line(format!("let bytes = {};", imm.bytes()));
+                f.line(format!("let value = self.{imm}.value() as u32;"));
+                f.line("emit_simm(buf, bytes, value);");
+            }
+            unknown => {
+                // Do nothing: no immediates expected.
+                debug_assert!(!unknown.iter().any(|o| matches!(o, Imm(_))));
+            }
         }
     }
 }

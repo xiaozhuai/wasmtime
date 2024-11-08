@@ -114,6 +114,13 @@ pub enum GprMem {
     Mem(Amode),
 }
 impl GprMem {
+    pub fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
+        match self {
+            GprMem::Gpr(gpr) => gpr.always_emit_if_8bit_needed(rex),
+            GprMem::Mem(_) => {}
+        }
+    }
+
     pub fn to_string(&self, size: Size) -> String {
         match self {
             GprMem::Gpr(gpr2) => gpr2.to_string(size).to_owned(),
