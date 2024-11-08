@@ -1,5 +1,6 @@
 //! Memory operands to instructions.
 
+use crate::alloc::RegallocVisitor;
 use crate::imm::Simm32;
 use crate::reg::{self, Gpr, Gpr2MinusRsp, Size};
 use arbitrary::Arbitrary;
@@ -50,6 +51,31 @@ impl Amode {
                 // note REX.B = 0.
                 rex.emit_two_op(sink, enc_g, 0);
             }
+        }
+    }
+
+    pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
+        match self {
+            Amode::ImmReg { base, .. } => {
+                // TODO: allow regalloc to replace a virtual register with a real one.
+                // TODO: should this be a debug_assert instead, like below?
+                let base = base.enc();
+                if base != reg::ENC_RBP && base != reg::ENC_RSP {
+                    visitor.read(base);
+                }
+            }
+            Amode::ImmRegRegShift { base, index, .. } => {
+                // TODO: allow regalloc to replace a virtual register with a real one.
+                let base = base.enc();
+                debug_assert_ne!(base, reg::ENC_RBP);
+                debug_assert_ne!(base, reg::ENC_RSP);
+                visitor.read(base);
+                let index = index.enc();
+                debug_assert_ne!(index, reg::ENC_RBP);
+                debug_assert_ne!(index, reg::ENC_RSP);
+                visitor.read(index);
+            }
+            Amode::RipRelative { .. } => todo!(),
         }
     }
 }
@@ -125,6 +151,20 @@ impl GprMem {
         match self {
             GprMem::Gpr(gpr2) => gpr2.to_string(size).to_owned(),
             GprMem::Mem(amode) => amode.to_string(),
+        }
+    }
+
+    pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
+        match self {
+            GprMem::Gpr(gpr) => gpr.read(visitor),
+            GprMem::Mem(amode) => amode.read(visitor),
+        }
+    }
+
+    pub fn read_write(&mut self, visitor: &mut impl RegallocVisitor) {
+        match self {
+            GprMem::Gpr(gpr) => gpr.read_write(visitor),
+            GprMem::Mem(amode) => amode.read(visitor),
         }
     }
 }

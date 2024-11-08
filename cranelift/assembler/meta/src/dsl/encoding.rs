@@ -124,7 +124,7 @@ impl Rex {
 
         if let Some(OperandKind::Imm(op)) = operands
             .iter()
-            .map(Operand::kind)
+            .map(|o| o.location.kind())
             .find(|k| matches!(k, OperandKind::Imm(_)))
         {
             assert_eq!(op.bits(), self.imm.bits());
@@ -138,6 +138,15 @@ impl From<Rex> for Encoding {
 }
 impl fmt::Display for Rex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.prefixes {
+            LegacyPrefixes::NoPrefix => {}
+            LegacyPrefixes::_66 => write!(f, "0x66 + ")?,
+            LegacyPrefixes::_F0 => write!(f, "0xF0 + ")?,
+            LegacyPrefixes::_66F0 => write!(f, "0x66F0 + ")?,
+            LegacyPrefixes::_F2 => write!(f, "0xF2 + ")?,
+            LegacyPrefixes::_F3 => write!(f, "0xF3 + ")?,
+            LegacyPrefixes::_66F3 => write!(f, "0x66F3 + ")?,
+        }
         if self.w {
             write!(f, "REX.W + ")?;
         }

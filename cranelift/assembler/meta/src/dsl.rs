@@ -10,7 +10,7 @@ mod format;
 
 pub use encoding::{rex, vex, Encoding, LegacyPrefixes, Rex};
 pub use features::Features;
-pub use format::{fmt, Format, Operand, OperandKind};
+pub use format::{fmt, r, rw, Format, Location, Mutability, Operand, OperandKind};
 
 /// Abbreviated constructor for an instruction.
 pub fn inst(

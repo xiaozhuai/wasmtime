@@ -3,6 +3,8 @@
 use arbitrary::Arbitrary;
 use cranelift_codegen::isa::x64::encoding::rex::RexFlags;
 
+use crate::alloc::RegallocVisitor;
+
 pub const ENC_RAX: u8 = 0;
 pub const ENC_RCX: u8 = 1;
 pub const ENC_RDX: u8 = 2;
@@ -135,6 +137,16 @@ impl Gpr {
             },
             _ => panic!("invalid reg: {}", self.0),
         }
+    }
+
+    pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
+        // TODO: allow regalloc to replace a virtual register with a real one.
+        visitor.read(self.0);
+    }
+
+    pub fn read_write(&mut self, visitor: &mut impl RegallocVisitor) {
+        // TODO: allow regalloc to replace a virtual register with a real one.
+        visitor.read_write(self.0);
     }
 }
 

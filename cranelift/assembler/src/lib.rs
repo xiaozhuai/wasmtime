@@ -1,10 +1,12 @@
 #![allow(non_camel_case_types)]
 
+mod alloc;
 pub mod fuzz;
 mod imm;
 mod mem;
 mod reg;
 
+use alloc::RegallocVisitor;
 use cranelift_codegen::isa::x64;
 use cranelift_codegen::isa::x64::encoding::rex::{emit_simm, encode_modrm, RexFlags};
 use cranelift_codegen::isa::x64::encoding::ByteSink;

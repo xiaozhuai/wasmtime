@@ -1,10 +1,33 @@
-use super::{generate_derive, Formatter};
+use super::{fmtln, generate_derive, Formatter};
 use crate::dsl;
 
 impl dsl::Inst {
+    /// `struct <inst> { <op>: Reg, <op>: Reg, ... }`
+    pub fn generate_struct(&self, f: &mut Formatter) {
+        let struct_name = self.struct_name();
+        let struct_fields = self.struct_fields();
+
+        f.line(format!("/// `{self}`"), None);
+        generate_derive(f);
+        fmtln!(f, "pub struct {struct_name} {{ {struct_fields} }}");
+    }
+
+    /// `pub <op>: <type>, *`
+    #[must_use]
+    fn struct_fields(&self) -> String {
+        self.format
+            .locations()
+            .filter_map(|l| {
+                let ty = l.generate_type()?;
+                Some(format!("pub {l}: {ty}"))
+            })
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+
     /// `<class name>_<format name>`
     #[must_use]
-    pub fn struct_name(&self) -> String {
+    fn struct_name(&self) -> String {
         format!("{}_{}", self.name.to_lowercase(), self.format.name.to_lowercase())
     }
 
@@ -12,67 +35,51 @@ impl dsl::Inst {
     pub fn generate_enum_variant(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
         let struct_name = self.struct_name();
-        f.line(format!("{variant_name}({struct_name}),"));
+        fmtln!(f, "{variant_name}({struct_name}),");
     }
 
     // `Self::<inst>(i) => write!(f, "{}", i),`
     pub fn generate_variant_display(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
-        f.line(format!("Self::{variant_name}(i) => write!(f, \"{{}}\", i),"));
+        fmtln!(f, "Self::{variant_name}(i) => write!(f, \"{{}}\", i),");
     }
 
     // `Self::<inst>(i) => i.encode(b),`
     pub fn generate_variant_encode(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
-        f.line(format!("Self::{variant_name}(i) => i.encode(b),"));
-    }
-
-    /// `struct <inst> { <op>: Reg, <op>: Reg, ... }`
-    pub fn generate_struct(&self, f: &mut Formatter) {
-        let struct_name = self.struct_name();
-        let struct_fields = self
-            .format
-            .operands
-            .iter()
-            .filter_map(|op| {
-                let ty = op.generate_type()?;
-                Some(format!("pub {op}: {ty}"))
-            })
-            .collect::<Vec<String>>()
-            .join(", ");
-        generate_derive(f);
-        f.line(format!("pub struct {struct_name} {{ {struct_fields} }}"));
+        fmtln!(f, "Self::{variant_name}(i) => i.encode(b),");
     }
 
     /// `impl <inst> { ... }`
     pub fn generate_struct_impl(&self, f: &mut Formatter) {
         let struct_name = self.struct_name();
-        f.line(format!("impl {struct_name} {{"));
+        fmtln!(f, "impl {struct_name} {{");
         f.indent_push();
         self.generate_encode_function(f);
         f.empty_line();
         self.generate_regalloc_function(f);
         f.indent_pop();
-        f.line("}");
+        fmtln!(f, "}}");
     }
 
     /// `fn encode(&self, buf: &mut Vec<u8>) { ... }`
     pub fn generate_encode_function(&self, f: &mut Formatter) {
-        f.line("pub fn encode(&self, buf: &mut MachBuffer<x64::Inst>) {");
+        fmtln!(f, "pub fn encode(&self, buf: &mut MachBuffer<x64::Inst>) {{");
         f.indent_push();
 
         // Emit trap.
         if let Some(op) = self.format.uses_memory() {
+            f.empty_line();
             f.comment("Emit trap.");
-            f.line(format!("if let GprMem::Mem({op}) = &self.{op} {{"));
+            fmtln!(f, "if let GprMem::Mem({op}) = &self.{op} {{");
             f.indent(|f| {
-                f.line(format!("if let Some(trap_code) = {op}.get_flags().trap_code() {{"));
+                fmtln!(f, "if let Some(trap_code) = {op}.get_flags().trap_code() {{");
                 f.indent(|f| {
-                    f.line("buf.add_trap(trap_code);");
+                    fmtln!(f, "buf.add_trap(trap_code);");
                 });
-                f.line("}");
+                fmtln!(f, "}}");
             });
-            f.line("}");
+            fmtln!(f, "}}");
         }
 
         match &self.encoding {
@@ -81,37 +88,57 @@ impl dsl::Inst {
         }
 
         f.indent_pop();
-        f.line("}");
+        fmtln!(f, "}}");
     }
 
     /// `fn regalloc(&self) -> String { ... }`
     pub fn generate_regalloc_function(&self, f: &mut Formatter) {
-        f.line("pub fn regalloc(&self) {");
-        f.indent_push();
-        f.line("todo!();");
-        f.indent_pop();
-        f.line("}");
+        use dsl::OperandKind::*;
+        fmtln!(f, "pub fn regalloc(&mut self, visitor: &mut impl RegallocVisitor) {{");
+        f.indent(|f| {
+            for o in &self.format.operands {
+                match o.location.kind() {
+                    Imm(_) => {
+                        // Immediates do not need register allocation.
+                    }
+                    FixedReg(_) => {
+                        let call = o.mutability.generate_regalloc_call();
+                        let fixed = o.location.generate_fixed_reg().unwrap();
+                        fmtln!(f, "visitor.fixed_{call}({fixed}.enc());");
+                    }
+                    Reg(reg) => {
+                        let call = o.mutability.generate_regalloc_call();
+                        fmtln!(f, "self.{reg}.{call}(visitor);");
+                    }
+                    RegMem(rm) => {
+                        let call = o.mutability.generate_regalloc_call();
+                        fmtln!(f, "self.{rm}.{call}(visitor);")
+                    }
+                }
+            }
+        });
+        fmtln!(f, "}}");
     }
 
     /// `impl Debug for <inst> { ... }`
     pub fn generate_display_impl(&self, f: &mut Formatter) {
         let struct_name = self.struct_name();
-        f.line(format!("impl std::fmt::Display for {struct_name} {{"));
+        fmtln!(f, "impl std::fmt::Display for {struct_name} {{");
         f.indent_push();
-        f.line("fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {");
+        fmtln!(f, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{");
 
         f.indent_push();
-        for op in &self.format.operands {
+        for op in self.format.locations() {
             let to_string = op.generate_to_string();
-            f.line(format!("let {op} = {to_string};"));
+            fmtln!(f, "let {op} = {to_string};");
         }
         let inst_name = &self.name;
         let ordered_ops = self.format.generate_att_style_operands();
-        f.line(format!("write!(f, \"{inst_name} {ordered_ops}\")"));
+        fmtln!(f, "write!(f, \"{inst_name} {ordered_ops}\")");
         f.indent_pop();
-        f.line("}");
+        fmtln!(f, "}}");
 
         f.indent_pop();
-        f.line("}");
+        fmtln!(f, "}}");
     }
 }

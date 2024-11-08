@@ -4,6 +4,7 @@ mod inst;
 mod operand;
 
 use crate::dsl;
+use formatter::fmtln;
 pub use formatter::Formatter;
 
 /// Top-level function for generating Rust code.
@@ -26,54 +27,73 @@ pub fn generate(f: &mut Formatter, insts: &[dsl::Inst]) {
 /// `enum Inst { ... }`
 fn generate_inst_enum(f: &mut Formatter, insts: &[dsl::Inst]) {
     generate_derive(f);
-    f.line("pub enum Inst {");
+    fmtln!(f, "pub enum Inst {{");
     f.indent_push();
     for inst in insts {
         inst.generate_enum_variant(f);
     }
     f.indent_pop();
-    f.line("}");
+    fmtln!(f, "}}");
 }
 
 /// `#[derive(...)]`
 fn generate_derive(f: &mut Formatter) {
-    f.line("#[derive(arbitrary::Arbitrary, Debug)]");
+    f.line("#[derive(arbitrary::Arbitrary, Debug)]", None);
 }
 
 /// `impl std::fmt::Display for Inst { ... }`
 fn generate_inst_display_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    f.line("impl std::fmt::Display for Inst {");
+    fmtln!(f, "impl std::fmt::Display for Inst {{");
     f.indent(|f| {
-        f.line("fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {");
+        fmtln!(f, "fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{");
         f.indent(|f| {
-            f.line("match self {");
+            fmtln!(f, "match self {{");
             f.indent_push();
             for inst in insts {
                 inst.generate_variant_display(f);
             }
             f.indent_pop();
-            f.line("}");
+            fmtln!(f, "}}");
         });
-        f.line("}");
+        fmtln!(f, "}}");
     });
-    f.line("}");
+    fmtln!(f, "}}");
 }
 
 /// `impl Inst { ... }`
 fn generate_inst_encode_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    f.line("impl Inst {");
+    fmtln!(f, "impl Inst {{");
     f.indent(|f| {
-        f.line("pub fn encode(&self, b: &mut MachBuffer<x64::Inst>) {");
+        fmtln!(f, "pub fn encode(&self, b: &mut MachBuffer<x64::Inst>) {{");
         f.indent(|f| {
-            f.line("match self {");
+            fmtln!(f, "match self {{");
             f.indent_push();
             for inst in insts {
                 inst.generate_variant_encode(f);
             }
             f.indent_pop();
-            f.line("}");
+            fmtln!(f, "}}");
         });
-        f.line("}");
+        fmtln!(f, "}}");
     });
-    f.line("}");
+    fmtln!(f, "}}");
+}
+
+pub fn maybe_file_loc(fmtstr: &str, file: &'static str, line: u32) -> Option<FileLocation> {
+    if fmtstr.ends_with(['{', '}']) {
+        None
+    } else {
+        Some(FileLocation { file, line })
+    }
+}
+
+pub struct FileLocation {
+    file: &'static str,
+    line: u32,
+}
+
+impl core::fmt::Display for FileLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.file, self.line)
+    }
 }

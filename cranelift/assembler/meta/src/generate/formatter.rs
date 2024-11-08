@@ -9,12 +9,14 @@ static SHIFTWIDTH: usize = 4;
 /// strings.
 macro_rules! fmtln {
     ($fmt:ident, $fmtstring:expr, $($fmtargs:expr),*) => {
-        $fmt.line(format!($fmtstring, $($fmtargs),*))
+        let loc = crate::generate::maybe_file_loc($fmtstring, file!(), line!());
+        $fmt.line(format!($fmtstring, $($fmtargs),*), loc)
     };
 
-    ($fmt:ident, $arg:expr) => {
-        $fmt.line($arg)
-    };
+    ($fmt:ident, $arg:expr) => {{
+        let loc = crate::generate::maybe_file_loc($arg, file!(), line!());
+        $fmt.line(format!($arg), loc)
+    }};
 
     ($_:tt, $($args:expr),+) => {
         compile_error!("This macro requires at least two arguments: the Formatter instance and a format string.")
@@ -24,6 +26,9 @@ macro_rules! fmtln {
         compile_error!("This macro requires at least two arguments: the Formatter instance and a format string.")
     };
 }
+pub(crate) use fmtln;
+
+use super::FileLocation;
 
 #[derive(Default)]
 pub struct Formatter {
@@ -66,8 +71,12 @@ impl Formatter {
     }
 
     /// Add an indented line.
-    pub fn line(&mut self, contents: impl AsRef<str>) {
-        let indented_line = format!("{}{}\n", self.get_indent(), contents.as_ref());
+    pub fn line(&mut self, contents: impl AsRef<str>, location: Option<FileLocation>) {
+        let indented_line = if let Some(location) = location {
+            format!("{} {} // {location}\n", self.get_indent(), contents.as_ref())
+        } else {
+            format!("{}{}\n", self.get_indent(), contents.as_ref())
+        };
         self.lines.push(indented_line);
     }
 
@@ -78,7 +87,7 @@ impl Formatter {
 
     /// Add a comment line.
     pub fn comment(&mut self, s: impl AsRef<str>) {
-        fmtln!(self, "// {}", s.as_ref());
+        self.line(format!("// {}", s.as_ref()), None)
     }
 
     /// Write `self.lines` to a file.
