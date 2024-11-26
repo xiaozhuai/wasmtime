@@ -214,14 +214,14 @@ pub fn emit_modrm_sib_disp(
             // ever be rsp. Note, though, that the encoding of r12, whose three
             // lower bits match the encoding of rsp, is explicitly allowed with
             // REX bytes so only rsp is disallowed.
-            assert!(enc_index != reg::ENC_RSP);
+            assert!(enc_index != reg::ENC_RSP as u8);
 
             // If the offset is zero then there is no immediate. Note, though,
             // that if the base register's lower three bits are `101` then an
             // offset must be present. This is a special case in the encoding of
             // the SIB byte and requires an explicit displacement with rbp/r13.
             let mut imm = Imm::new(simm32.0, evex_scaling);
-            if enc_base & 7 == reg::ENC_RBP {
+            if enc_base & 7 == reg::ENC_RBP as u8 {
                 imm.force_immediate();
             }
 

@@ -21,10 +21,15 @@ pub const ENC_R14: u8 = 14;
 pub const ENC_R15: u8 = 15;
 
 #[derive(Clone, Debug)]
-pub struct Gpr(pub(crate) u8);
+pub struct Gpr(pub(crate) u32);
 impl Gpr {
+    pub fn new(enc: u8) -> Self {
+        assert!(enc < 16, "invalid register: {}", enc);
+        Self(enc as u32)
+    }
+
     pub fn enc(&self) -> u8 {
-        self.0
+        self.0.try_into().expect("invalid register")
     }
 
     pub fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
@@ -139,12 +144,12 @@ impl Gpr {
 
     pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
         // TODO: allow regalloc to replace a virtual register with a real one.
-        visitor.read(self.0);
+        visitor.read(self.enc());
     }
 
     pub fn read_write(&mut self, visitor: &mut impl RegallocVisitor) {
         // TODO: allow regalloc to replace a virtual register with a real one.
-        visitor.read_write(self.0);
+        visitor.read_write(self.enc());
     }
 }
 
@@ -180,6 +185,6 @@ impl<'a> Arbitrary<'a> for Gpr2MinusRsp {
             ENC_RAX, ENC_RCX, ENC_RDX, ENC_RBX, ENC_RBP, ENC_RSI, ENC_RDI, ENC_R8, ENC_R9, ENC_R10,
             ENC_R11, ENC_R12, ENC_R13, ENC_R14, ENC_R15,
         ])?;
-        Ok(Self(Gpr(*gpr)))
+        Ok(Self(Gpr(*gpr as u32)))
     }
 }
