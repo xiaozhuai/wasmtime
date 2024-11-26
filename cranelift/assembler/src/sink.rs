@@ -1,6 +1,7 @@
-//! Contains the encoding machinery for the various x64 instruction formats.
+//! Contains the traits that a user of this assembler must implement.
+
 use arbitrary::Arbitrary;
-use std::{num::NonZeroU8, vec::Vec};
+use std::{num::NonZeroU8, ops::Index, vec::Vec};
 
 /// The encoding formats in this module all require a way of placing bytes into
 /// a buffer.
@@ -62,3 +63,19 @@ impl CodeSink for Vec<u8> {
 
     fn add_trap(&mut self, _: TrapCode) {}
 }
+
+/// A table mapping `KnownOffset` identifiers to their `i32` offset values.
+///
+/// When encoding instructions, Cranelift may not know all of the information
+/// needed to construct an immediate. Specifically, addressing modes that
+/// require knowing the size of the tail arguments or outgoing arguments (see
+/// `SyntheticAmode::finalize`) will not know these sizes until emission.
+///
+/// This table allows up to do a "late" look up of these values by their
+/// `KnownOffset`.
+pub trait KnownOffsetTable: Index<KnownOffset, Output = i32> {}
+impl KnownOffsetTable for Vec<i32> {}
+
+/// A `KnownOffset` is a unique identifier for a specific offset known only at
+/// emission time.
+pub type KnownOffset = usize;

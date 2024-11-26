@@ -131,7 +131,6 @@ impl dsl::Format {
                 // No need to emit a ModRM byte: we know the register used.
             }
             [RegMem(dst), Imm(_)] => {
-                f.comment("Emit ModR/M byte.");
                 debug_assert!(rex.digit > 0);
                 fmtln!(f, "let digit = 0x{:x};", rex.digit);
                 fmtln!(f, "match &self.{dst} {{");
@@ -139,7 +138,7 @@ impl dsl::Format {
                     fmtln!(f, "GprMem::Gpr({dst}) => emit_modrm(buf, digit, {dst}.enc()),");
                     fmtln!(
                         f,
-                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, digit, {dst}, 0, None),"
+                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, digit, {dst}, 0, None),"
                     );
                 });
                 fmtln!(f, "}}");
@@ -151,7 +150,7 @@ impl dsl::Format {
                     fmtln!(f, "GprMem::Gpr({src}) => emit_modrm(buf, {dst}, {src}.enc()),");
                     fmtln!(
                         f,
-                        "GprMem::Mem({src}) => emit_modrm_sib_disp(buf, {dst}, {src}, 0, None),"
+                        "GprMem::Mem({src}) => emit_modrm_sib_disp(buf, off, {dst}, {src}, 0, None),"
                     );
                 });
                 fmtln!(f, "}}");
@@ -163,7 +162,7 @@ impl dsl::Format {
                     fmtln!(f, "GprMem::Gpr({dst}) => emit_modrm(buf, {src}, {dst}.enc()),");
                     fmtln!(
                         f,
-                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, {src}, {dst}, 0, None),"
+                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, {src}, {dst}, 0, None),"
                     );
                 });
                 fmtln!(f, "}}");

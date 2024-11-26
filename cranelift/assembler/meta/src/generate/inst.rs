@@ -47,7 +47,7 @@ impl dsl::Inst {
     // `Self::<inst>(i) => i.encode(b),`
     pub fn generate_variant_encode(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => i.encode(b),");
+        fmtln!(f, "Self::{variant_name}(i) => i.encode(b, o),");
     }
 
     /// `impl <inst> { ... }`
@@ -62,9 +62,14 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn encode(&self, buf: &mut Vec<u8>) { ... }`
+    /// `fn encode(&self, buf: &mut impl CodeSink, off: &impl OffsetTable) { ... }`
     pub fn generate_encode_function(&self, f: &mut Formatter) {
-        fmtln!(f, "pub fn encode(&self, buf: &mut impl CodeSink) {{");
+        let off = if self.format.uses_memory().is_some() {
+            "off"
+        } else {
+            "_"
+        };
+        fmtln!(f, "pub fn encode(&self, buf: &mut impl CodeSink, {off}: &impl OffsetTable) {{");
         f.indent_push();
 
         // Emit trap.

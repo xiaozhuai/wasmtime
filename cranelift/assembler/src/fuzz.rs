@@ -33,7 +33,8 @@ pub fn roundtrip(inst: &Inst) {
 /// single-instruction disassembly we're doing here.
 fn assemble(insn: &Inst) -> Vec<u8> {
     let mut buffer = Vec::new();
-    insn.encode(&mut buffer);
+    let offsets: Vec<i32> = Vec::new();
+    insn.encode(&mut buffer, &offsets);
     buffer
 }
 

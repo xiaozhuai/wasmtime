@@ -1,17 +1,17 @@
 //! Memory operands to instructions.
 
 use crate::alloc::RegallocVisitor;
-use crate::imm::Simm32;
+use crate::imm::{Simm32, Simm32PlusKnownOffset};
 use crate::reg::{self, Gpr, Gpr2MinusRsp, Size};
 use crate::rex::{encode_modrm, encode_sib, Imm, RexFlags};
-use crate::sink::{CodeSink, Label, TrapCode};
+use crate::sink::{CodeSink, KnownOffsetTable, Label, TrapCode};
 use arbitrary::Arbitrary;
 
 #[derive(Clone, Debug, Arbitrary)]
 pub enum Amode {
     ImmReg {
         base: Gpr,
-        simm32: Simm32,
+        simm32: Simm32PlusKnownOffset,
         trap: Option<TrapCode>,
     },
     ImmRegRegShift {
@@ -169,6 +169,7 @@ impl GprMem {
 
 pub fn emit_modrm_sib_disp(
     sink: &mut impl CodeSink,
+    offsets: &impl KnownOffsetTable,
     enc_g: u8,
     mem_e: &Amode,
     bytes_at_end: u8,
@@ -177,7 +178,7 @@ pub fn emit_modrm_sib_disp(
     match mem_e.clone() {
         Amode::ImmReg { simm32, base, .. } => {
             let enc_e = base.enc();
-            let mut imm = Imm::new(simm32.0, evex_scaling);
+            let mut imm = Imm::new(simm32.value(offsets), evex_scaling);
 
             // Most base registers allow for a single ModRM byte plus an
             // optional immediate. If rsp is the base register, however, then a
@@ -220,7 +221,7 @@ pub fn emit_modrm_sib_disp(
             // that if the base register's lower three bits are `101` then an
             // offset must be present. This is a special case in the encoding of
             // the SIB byte and requires an explicit displacement with rbp/r13.
-            let mut imm = Imm::new(simm32.0, evex_scaling);
+            let mut imm = Imm::new(simm32.value(), evex_scaling);
             if enc_base & 7 == reg::ENC_RBP as u8 {
                 imm.force_immediate();
             }

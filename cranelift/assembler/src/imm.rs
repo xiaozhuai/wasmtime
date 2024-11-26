@@ -2,6 +2,7 @@
 
 #![allow(clippy::module_name_repetitions)]
 
+use crate::sink::{KnownOffset, KnownOffsetTable};
 use arbitrary::Arbitrary;
 
 #[derive(Arbitrary, Clone, Debug)]
@@ -65,7 +66,14 @@ impl std::fmt::Display for Imm32 {
 }
 
 #[derive(Clone, Copy, Debug, Arbitrary)]
-pub struct Simm32(pub(crate) i32);
+pub struct Simm32(i32);
+
+impl Simm32 {
+    #[must_use]
+    pub fn value(&self) -> i32 {
+        self.0
+    }
+}
 
 impl std::fmt::LowerHex for Simm32 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -83,5 +91,41 @@ impl std::fmt::LowerHex for Simm32 {
             None => -2_147_483_648,
         };
         std::fmt::LowerHex::fmt(&abs, f)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Simm32PlusKnownOffset {
+    pub simm32: Simm32,
+    pub offset: Option<KnownOffset>,
+}
+
+impl Simm32PlusKnownOffset {
+    #[must_use]
+    pub fn value(&self, offsets: &impl KnownOffsetTable) -> i32 {
+        let offset = match self.offset {
+            Some(offset) => offsets[offset],
+            None => 0,
+        };
+        self.simm32
+            .value()
+            .checked_add(offset)
+            .expect("no wrapping")
+    }
+}
+
+impl Arbitrary<'_> for Simm32PlusKnownOffset {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        // For now, we don't generate offsets (TODO).
+        Ok(Self { simm32: Simm32::arbitrary(u)?, offset: None })
+    }
+}
+
+impl std::fmt::LowerHex for Simm32PlusKnownOffset {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Some(offset) = self.offset {
+            write!(f, "<offset:{}>+", offset)?;
+        }
+        std::fmt::LowerHex::fmt(&self.simm32, f)
     }
 }
