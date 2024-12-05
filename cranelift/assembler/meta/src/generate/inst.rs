@@ -28,14 +28,38 @@ impl dsl::Inst {
     /// `<class name>_<format name>`
     #[must_use]
     fn struct_name(&self) -> String {
-        format!("{}_{}", self.name.to_lowercase(), self.format.name.to_lowercase())
+        format!(
+            "{}_{}_{}",
+            self.name.to_lowercase(),
+            self.format.name.to_lowercase(),
+            self.immediate_name()
+        )
     }
 
-    /// `<inst>(<inst>),`
+    #[must_use]
+    fn immediate_name(&self) -> String {
+        self.format
+            .operands_by_kind()
+            .iter()
+            .find(|op| match op {
+                dsl::format::OperandKind::Imm(_) => true,
+                _ => false,
+            })
+            .map_or_else(
+                || String::new(),
+                |op| match op {
+                    dsl::format::OperandKind::Imm(dsl::Location::imm8) => "ib".to_string(),
+                    dsl::format::OperandKind::Imm(dsl::Location::imm16) => "iw".to_string(),
+                    dsl::format::OperandKind::Imm(dsl::Location::imm32) => "id".to_string(),
+                    _ => "".to_string(),
+                },
+            )
+    }
+
+    /// `<inst>_<immediate_name>(<inst>),`
     pub fn generate_enum_variant(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
-        let struct_name = self.struct_name();
-        fmtln!(f, "{variant_name}({struct_name}),");
+        fmtln!(f, "{variant_name}({variant_name}),");
     }
 
     // `Self::<inst>(i) => write!(f, "{}", i),`
@@ -138,10 +162,12 @@ impl dsl::Inst {
         fmtln!(f, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{");
 
         f.indent_push();
-        for op in self.format.locations() {
-            let to_string = op.generate_to_string();
-            fmtln!(f, "let {op} = {to_string};");
+        for op in self.format.operands.iter() {
+            let location = op.location;
+            let to_string = location.generate_to_string(op.extension);
+            fmtln!(f, "let {location} = {to_string};");
         }
+
         let inst_name = &self.name;
         let ordered_ops = self.format.generate_att_style_operands();
         fmtln!(f, "write!(f, \"{inst_name} {ordered_ops}\")");
