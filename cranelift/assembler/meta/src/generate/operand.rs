@@ -1,5 +1,5 @@
 use crate::dsl;
-use crate::dsl::format::Extension;
+
 impl dsl::Location {
     /// `<operand type>`
     #[must_use]
@@ -15,46 +15,20 @@ impl dsl::Location {
         }
     }
 
-    /// `<operand>.to_string()`
+    /// `self.<operand>.to_string(...)`
     #[must_use]
-    pub fn generate_to_string(&self, extension: Extension) -> String {
+    pub fn generate_to_string(&self, extension: dsl::Extension) -> String {
         use dsl::Location::*;
-        match (self, extension) {
-            (al, _) => "\"%al\"".into(),
-            (ax, _) => "\"%ax\"".into(),
-            (eax, _) => "\"%eax\"".into(),
-            (rax, _) => "\"%rax\"".into(),
-            (imm8, Extension::None) | (imm16, Extension::None) | (imm32, Extension::None) => {
-                format!("self.{self}.to_string(Extension::None)")
+        match self {
+            al => "\"%al\"".into(),
+            ax => "\"%ax\"".into(),
+            eax => "\"%eax\"".into(),
+            rax => "\"%rax\"".into(),
+            imm8 | imm16 | imm32 => {
+                let variant = extension.generate_variant();
+                format!("self.{self}.to_string({variant})")
             }
-            (imm8, Extension::SignExtendQuad)
-            | (imm16, Extension::SignExtendQuad)
-            | (imm32, Extension::SignExtendQuad) => {
-                format!("self.{self}.to_string(Extension::SignExtendQuad)")
-            }
-            (imm8, Extension::SignExtendLong)
-            | (imm16, Extension::SignExtendLong)
-            | (imm32, Extension::SignExtendLong) => {
-                format!("self.{self}.to_string(Extension::SignExtendLong)")
-            }
-            (imm8, Extension::SignExtendWord) | (imm16, Extension::SignExtendWord) => {
-                format!("self.{self}.to_string(Extension::SignExtendWord)")
-            }
-            (imm32, Extension::SignExtendWord) => unreachable!(),
-            (imm8, Extension::ZeroExtend) | (imm16, Extension::ZeroExtend) => {
-                format!("self.{self}.to_string(Extension::ZeroExtend)")
-            }
-            (imm32, Extension::ZeroExtend) => {
-                format!("self.{self}.to_string(Extension::ZeroExtend)")
-            }
-            (r8, _)
-            | (r16, _)
-            | (r32, _)
-            | (r64, _)
-            | (rm8, _)
-            | (rm16, _)
-            | (rm32, _)
-            | (rm64, _) => match self.generate_size() {
+            r8 | r16 | r32 | r64 | rm8 | rm16 | rm32 | rm64 => match self.generate_size() {
                 Some(size) => format!("self.{self}.to_string({size})"),
                 None => unreachable!(),
             },
@@ -91,6 +65,21 @@ impl dsl::Mutability {
         match self {
             dsl::Mutability::Read => "read",
             dsl::Mutability::ReadWrite => "read_write",
+        }
+    }
+}
+
+impl dsl::Extension {
+    /// `Extension::...`
+    #[must_use]
+    pub fn generate_variant(&self) -> &str {
+        use dsl::Extension::*;
+        match self {
+            None => "Extension::None",
+            SignExtendWord => "Extension::SignExtendWord",
+            SignExtendLong => "Extension::SignExtendLong",
+            SignExtendQuad => "Extension::SignExtendQuad",
+            ZeroExtend => "Extension::ZeroExtend",
         }
     }
 }
