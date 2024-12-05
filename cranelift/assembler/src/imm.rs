@@ -1,9 +1,23 @@
 //! Immediate operands to instructions.
 
 #![allow(clippy::module_name_repetitions)]
+#![allow(unused_comparisons)]
 
 use crate::sink::{KnownOffset, KnownOffsetTable};
 use arbitrary::Arbitrary;
+
+/// This helper function prints the hexadecimal representation of the immediate
+/// value, but only if the value is greater than or equal to 10. This is
+/// necessary for how Capstone pretty-prints immediate values.
+macro_rules! maybe_print_hex {
+    ($n:expr) => {
+        if $n >= 0 && $n < 10 {
+            format!("${:x}", $n)
+        } else {
+            format!("$0x{:x}", $n)
+        }
+    };
+}
 
 #[derive(Arbitrary, Clone, Debug)]
 pub struct Imm8(u8);
@@ -15,48 +29,13 @@ impl Imm8 {
     }
 
     pub fn to_string(&self, extend: Extension) -> String {
-        if matches!(extend, Extension::SignExtendQuad) {
-            let extended = self.0 as i8 as i64; // Convert u8 to i8, then to i64 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::SignExtendLong) {
-            let extended = self.0 as i8 as i32; // Convert u8 to i8, then to i32 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::SignExtendWord) {
-            let extended = self.0 as i8 as i16; // Convert u8 to i8, then to i16 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::ZeroExtend) {
-            let extended = self.0 as u8 as u64;
-            if self.0 < 10 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if self.0 < 10 {
-            format!("${:x}", self.0)
-        } else {
-            format!("$0x{:x}", self.0)
-        }
-    }
-}
-
-impl std::fmt::Display for Imm8 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0 < 10 {
-            write!(f, "${:x}", self.0)
-        } else {
-            write!(f, "$0x{:x}", self.0)
+        use Extension::*;
+        match extend {
+            None => maybe_print_hex!(self.0),
+            SignExtendWord => maybe_print_hex!(self.0 as i8 as i16),
+            SignExtendLong => maybe_print_hex!(self.0 as i8 as i32),
+            SignExtendQuad => maybe_print_hex!(self.0 as i8 as i64),
+            ZeroExtend => maybe_print_hex!(self.0 as u64),
         }
     }
 }
@@ -71,48 +50,13 @@ impl Imm16 {
     }
 
     pub fn to_string(&self, extend: Extension) -> String {
-        if matches!(extend, Extension::SignExtendQuad) {
-            let extended = self.0 as i16 as i64; // Convert u16 to i16, then to i64 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::SignExtendLong) {
-            let extended = self.0 as i16 as i32; // Convert u16 to i16, then to i32 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::SignExtendWord) {
-            let extended = self.0 as i16; // Convert u16 to i16
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::ZeroExtend) {
-            let extended = self.0 as u16 as u64;
-            if self.0 < 10 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if self.0 < 10 {
-            format!("${:x}", self.0)
-        } else {
-            format!("$0x{:x}", self.0)
-        }
-    }
-}
-
-impl std::fmt::Display for Imm16 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0 < 10 {
-            write!(f, "${:x}", self.0)
-        } else {
-            write!(f, "$0x{:x}", self.0)
+        use Extension::*;
+        match extend {
+            None => maybe_print_hex!(self.0),
+            SignExtendWord => maybe_print_hex!(self.0 as i16),
+            SignExtendLong => maybe_print_hex!(self.0 as i16 as i32),
+            SignExtendQuad => maybe_print_hex!(self.0 as i16 as i64),
+            ZeroExtend => maybe_print_hex!(self.0 as u64),
         }
     }
 }
@@ -126,31 +70,13 @@ impl Imm32 {
         self.0
     }
     pub fn to_string(&self, extend: Extension) -> String {
-        if matches!(extend, Extension::SignExtendQuad) {
-            let extended = self.0 as i32 as i64; // Convert u8 to i8, then to i64 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::SignExtendLong) {
-            let extended = self.0 as i32; // Convert u8 to i8, then to i64 for sign extension
-            if extended < 10 && extended >= 0 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if matches!(extend, Extension::ZeroExtend) {
-            let extended = self.0 as u32 as u64;
-            if self.0 < 10 {
-                format!("${:x}", extended)
-            } else {
-                format!("$0x{:x}", extended)
-            }
-        } else if self.0 < 10 {
-            format!("${:x}", self.0)
-        } else {
-            format!("$0x{:x}", self.0)
+        use Extension::*;
+        match extend {
+            None => maybe_print_hex!(self.0),
+            SignExtendWord => unreachable!("cannot sign extend a 32-bit value"),
+            SignExtendLong => maybe_print_hex!(self.0 as i32),
+            SignExtendQuad => maybe_print_hex!(self.0 as i32 as i64),
+            ZeroExtend => maybe_print_hex!(self.0 as u64),
         }
     }
 }
