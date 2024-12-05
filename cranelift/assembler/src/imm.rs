@@ -1,7 +1,8 @@
 //! Immediate operands to instructions.
 
 #![allow(clippy::module_name_repetitions)]
-#![allow(unused_comparisons)]
+#![allow(unused_comparisons)] // Necessary to use maybe_print_hex! with `u*` values.
+#![allow(clippy::cast_possible_wrap)] // Necessary to cast to `i*` for sign extension.
 
 use crate::sink::{KnownOffset, KnownOffsetTable};
 use arbitrary::Arbitrary;
@@ -29,13 +30,13 @@ impl Imm8 {
     }
 
     pub fn to_string(&self, extend: Extension) -> String {
-        use Extension::*;
+        use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
             None => maybe_print_hex!(self.0),
-            SignExtendWord => maybe_print_hex!(self.0 as i8 as i16),
-            SignExtendLong => maybe_print_hex!(self.0 as i8 as i32),
-            SignExtendQuad => maybe_print_hex!(self.0 as i8 as i64),
-            ZeroExtend => maybe_print_hex!(self.0 as u64),
+            SignExtendWord => maybe_print_hex!(i16::from(self.0 as i8)),
+            SignExtendLong => maybe_print_hex!(i32::from(self.0 as i8)),
+            SignExtendQuad => maybe_print_hex!(i64::from(self.0 as i8)),
+            ZeroExtend => maybe_print_hex!(u64::from(self.0)),
         }
     }
 }
@@ -50,13 +51,13 @@ impl Imm16 {
     }
 
     pub fn to_string(&self, extend: Extension) -> String {
-        use Extension::*;
+        use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
             None => maybe_print_hex!(self.0),
             SignExtendWord => maybe_print_hex!(self.0 as i16),
-            SignExtendLong => maybe_print_hex!(self.0 as i16 as i32),
-            SignExtendQuad => maybe_print_hex!(self.0 as i16 as i64),
-            ZeroExtend => maybe_print_hex!(self.0 as u64),
+            SignExtendLong => maybe_print_hex!(i32::from(self.0 as i16)),
+            SignExtendQuad => maybe_print_hex!(i64::from(self.0 as i16)),
+            ZeroExtend => maybe_print_hex!(u64::from(self.0)),
         }
     }
 }
@@ -70,17 +71,18 @@ impl Imm32 {
         self.0
     }
     pub fn to_string(&self, extend: Extension) -> String {
-        use Extension::*;
+        use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
             None => maybe_print_hex!(self.0),
             SignExtendWord => unreachable!("cannot sign extend a 32-bit value"),
             SignExtendLong => maybe_print_hex!(self.0 as i32),
-            SignExtendQuad => maybe_print_hex!(self.0 as i32 as i64),
-            ZeroExtend => maybe_print_hex!(self.0 as u64),
+            SignExtendQuad => maybe_print_hex!(i64::from(self.0 as i32)),
+            ZeroExtend => maybe_print_hex!(u64::from(self.0)),
         }
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Extension {
     None,
     SignExtendQuad,
@@ -94,7 +96,7 @@ pub struct Simm32(i32);
 
 impl Simm32 {
     #[must_use]
-    pub fn value(&self) -> i32 {
+    pub fn value(self) -> i32 {
         self.0
     }
 }
@@ -148,7 +150,7 @@ impl Arbitrary<'_> for Simm32PlusKnownOffset {
 impl std::fmt::LowerHex for Simm32PlusKnownOffset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if let Some(offset) = self.offset {
-            write!(f, "<offset:{}>+", offset)?;
+            write!(f, "<offset:{offset}>+")?;
         }
         std::fmt::LowerHex::fmt(&self.simm32, f)
     }

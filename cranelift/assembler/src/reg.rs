@@ -24,8 +24,8 @@ pub const ENC_R15: u8 = 15;
 pub struct Gpr(pub(crate) u32);
 impl Gpr {
     pub fn new(enc: u8) -> Self {
-        assert!(enc < 16, "invalid register: {}", enc);
-        Self(enc as u32)
+        assert!(enc < 16, "invalid register: {enc}");
+        Self(u32::from(enc))
     }
 
     pub fn enc(&self) -> u8 {
@@ -185,6 +185,6 @@ impl<'a> Arbitrary<'a> for Gpr2MinusRsp {
             ENC_RAX, ENC_RCX, ENC_RDX, ENC_RBX, ENC_RBP, ENC_RSI, ENC_RDI, ENC_R8, ENC_R9, ENC_R10,
             ENC_R11, ENC_R12, ENC_R13, ENC_R14, ENC_R15,
         ])?;
-        Ok(Self(Gpr(*gpr as u32)))
+        Ok(Self(Gpr(u32::from(*gpr))))
     }
 }
