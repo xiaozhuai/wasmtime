@@ -812,7 +812,10 @@
        (Unwind (inst UnwindInst))
 
        ;; A pseudoinstruction that just keeps a value alive.
-       (DummyUse (reg Reg))))
+       (DummyUse (reg Reg))
+
+       ;; An instruction assembled outside of cranelift-codegen.
+       (External (inst AssemblerInst))))
 
 (type OperandSize extern
       (enum Size8
@@ -838,6 +841,27 @@
 (decl pure box_synthetic_amode (SyntheticAmode) BoxSyntheticAmode)
 (extern constructor box_synthetic_amode box_synthetic_amode)
 (convert SyntheticAmode BoxSyntheticAmode box_synthetic_amode)
+
+;; Interface with assembler types.
+(type AssemblerInst extern (enum))
+(type AssemblerGpr extern (enum))
+(type AssemblerImm8 extern (enum))
+
+(decl pure to_assembler_gpr (Gpr) AssemblerGpr)
+(extern constructor to_assembler_gpr to_assembler_gpr)
+(convert Gpr AssemblerGpr to_assembler_gpr)
+
+(decl pure from_assembler_gpr (AssemblerGpr) Gpr)
+(extern constructor from_assembler_gpr from_assembler_gpr)
+(convert AssemblerGpr Gpr from_assembler_gpr)
+
+(decl pure to_assembler_imm8 (GprMemImm) AssemblerImm8)
+(extern constructor to_assembler_imm8 to_assembler_imm8)
+(convert GprMemImm AssemblerImm8 to_assembler_imm8)
+
+(decl pure from_assembler_imm8 (AssemblerImm8) GprMemImm)
+(extern constructor from_assembler_imm8 from_assembler_imm8)
+(convert AssemblerImm8 GprMemImm from_assembler_imm8)
 
 ;; Get the `OperandSize` for a given `Type`, rounding smaller types up to 32 bits.
 (decl operand_size_of_type_32_64 (Type) OperandSize)
@@ -1977,7 +2001,7 @@
 ;; instructions which load exactly the type width necessary use
 ;; `sinkable_load_exact`.
 (decl sinkable_load (SinkableLoad) Value)
-(spec (sinkable_load inst) 
+(spec (sinkable_load inst)
       (provide (= result inst)))
 (extern extractor sinkable_load sinkable_load)
 
@@ -2011,7 +2035,7 @@
 (rule (sink_load_to_gpr_mem load) (RegMem.Mem load))
 
 (decl sink_load_to_reg_mem_imm (SinkableLoad) RegMemImm)
-(spec (sink_load_to_reg_mem_imm load) 
+(spec (sink_load_to_reg_mem_imm load)
       (provide (= result load)))
 (rule (sink_load_to_reg_mem_imm load) (RegMemImm.Mem load))
 
@@ -2328,7 +2352,7 @@
 
 (type ExtendKind (enum Sign Zero))
 
-(model ExtMode (enum 
+(model ExtMode (enum
       (BL #b000)
       (BQ #b001)
       (WL #b010)
@@ -2518,15 +2542,15 @@
 
 (decl x64_movzx (ExtMode GprMem) Gpr)
 (spec (x64_movzx mode src)
-      (provide 
-            (= result 
-                  (conv_to 
-                        64  
+      (provide
+            (= result
+                  (conv_to
+                        64
                         (zero_ext
                               32
-                              (load_effect 
+                              (load_effect
                                     (extract 79 64 src)
-                                    (switch mode 
+                                    (switch mode
                                           ((ExtMode.BL) 8)
                                           ((ExtMode.BQ) 8)
                                           ((ExtMode.WL) 16)
@@ -2900,11 +2924,25 @@
 
 ;; Helper for emitting `and` instructions.
 (decl x64_and (Type Gpr GprMemImm) Gpr)
-(rule (x64_and ty src1 src2)
+(rule 1 (x64_and $I8 src1 (is_imm src2)) (x64_andb_mi src1 src2))
+;; (rule 1 (x64_and $I16 src1 (is_imm src2)) (x64_andw_mi src1 src2))
+;; (rule 1 (x64_and $I32 src1 (is_imm src2)) (x64_andl_mi src1 src2))
+;; (rule 1 (x64_and $I64 src1 (is_imm src2)) (x64_andq_mi src1 src2))
+(rule 0 (x64_and ty src1 src2)
       (alu_rmi_r ty
                  (AluRmiROpcode.And)
                  src1
                  src2))
+
+(extern extractor is_imm is_imm)
+(decl is_imm (GprMemImm) GprMemImm)
+
+(decl x64_andb_mi (AssemblerGpr AssemblerImm8) AssemblerGpr)
+(rule (x64_andb_mi rm8 imm8)
+      (let ((_ Unit (emit (MInst.External (assemble_andb_mi rm8 imm8)))))
+        rm8))
+(decl assemble_andb_mi (AssemblerGpr AssemblerImm8) AssemblerInst)
+(extern constructor assemble_andb_mi assemble_andb_mi)
 
 (decl x64_and_with_flags_paired (Type Gpr GprMemImm) ProducesFlags)
 (rule (x64_and_with_flags_paired ty src1 src2)
@@ -4916,14 +4954,14 @@
 
 (decl x64_add_mem (Type Amode Gpr) SideEffectNoResult)
 (spec (x64_add_mem ty addr val)
-      (provide (= result (store_effect 
-                        (extract 79 64 addr) 
-                        ty 
-                        (conv_to ty (bvadd (load_effect (extract 79 64 addr) ty (extract 63 0 addr)) (conv_to ty val))) 
+      (provide (= result (store_effect
+                        (extract 79 64 addr)
+                        ty
+                        (conv_to ty (bvadd (load_effect (extract 79 64 addr) ty (extract 63 0 addr)) (conv_to ty val)))
                         (extract 63 0 addr))
             )
       )
-       (require (or (= ty 32) (= ty 64))) 
+       (require (or (= ty 32) (= ty 64)))
 )
 (rule (x64_add_mem ty addr val)
       (alu_rm ty (AluRmiROpcode.Add) addr val))
