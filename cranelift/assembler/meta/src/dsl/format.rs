@@ -74,6 +74,10 @@ impl Format {
         self.locations().copied().find(Location::uses_memory)
     }
 
+    pub fn uses_arbitrary_register(&self) -> bool {
+        self.locations().any(|l| l.uses_arbitrary_register())
+    }
+
     pub fn locations(&self) -> impl Iterator<Item = &Location> + '_ {
         self.operands.iter().map(|o| &o.location)
     }
@@ -84,6 +88,16 @@ impl Format {
 
     pub fn operands_by_kind(&self) -> Vec<OperandKind> {
         self.locations().map(Location::kind).collect()
+    }
+
+    pub fn operands_with_ty<'a, 'b: 'a>(
+        &'a self,
+        generic: Option<&'b str>,
+    ) -> impl Iterator<Item = (Location, String)> + 'a {
+        self.locations().cloned().filter_map(move |l| {
+            let ty = l.generate_type(generic)?;
+            Some((l, ty))
+        })
     }
 }
 
@@ -176,6 +190,14 @@ impl Location {
         match self {
             al | ax | eax | rax | imm8 | imm16 | imm32 | r8 | r16 | r32 | r64 => false,
             rm8 | rm16 | rm32 | rm64 => true,
+        }
+    }
+
+    pub fn uses_arbitrary_register(&self) -> bool {
+        use Location::*;
+        match self {
+            al | ax | eax | rax | imm8 | imm16 | imm32 => false,
+            r8 | r16 | r32 | r64 | rm8 | rm16 | rm32 | rm64 => true,
         }
     }
 

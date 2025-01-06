@@ -7,12 +7,15 @@ use crate::dsl;
 use formatter::fmtln;
 pub use formatter::Formatter;
 
-/// Top-level function for generating Rust code.
-pub fn generate(f: &mut Formatter, insts: &[dsl::Inst]) {
+/// Generate the Rust assembler code; e.g., `enum Inst { ... }`.
+pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
     // Generate "all instructions" enum.
     generate_inst_enum(f, insts);
+
     generate_inst_display_impl(f, insts);
-    generate_inst_impl(f, insts);
+    generate_inst_encode_impl(f, insts);
+    generate_inst_visit_impl(f, insts);
+    generate_inst_constructor_impl(f, insts);
 
     // Generate per-instruction structs.
     f.empty_line();
@@ -24,10 +27,42 @@ pub fn generate(f: &mut Formatter, insts: &[dsl::Inst]) {
     }
 }
 
+/// Generate the `isle_assembler_methods!` macro.
+pub fn isle_macro(f: &mut Formatter, insts: &[dsl::Inst]) {
+    fmtln!(f, "#[macro_export]");
+    fmtln!(f, "macro_rules! isle_assembler_methods {{");
+    f.indent(|f| {
+        fmtln!(f, "() => {{");
+        f.indent(|f| {
+            for inst in insts {
+                inst.generate_isle_macro(f, "PairedGpr");
+            }
+        });
+        fmtln!(f, "}};");
+    });
+    fmtln!(f, "}}");
+}
+
+/// Generate the ISLE definitions that match the `isle_assembler_methods!` macro
+/// above.
+pub fn isle_definitions(f: &mut Formatter, insts: &[dsl::Inst]) {
+    f.line("(type AssemblerImm8 extern (enum))", None);
+    f.line("(type AssemblerImm16 extern (enum))", None);
+    f.line("(type AssemblerImm32 extern (enum))", None);
+    f.line("(type AssemblerGpr extern (enum))", None);
+    f.line("(type AssemblerGprMem extern (enum))", None);
+    f.line("(type AssemblerInst extern (enum))", None);
+    f.empty_line();
+    for inst in insts {
+        inst.generate_isle_definition(f);
+        f.empty_line();
+    }
+}
+
 /// `enum Inst { ... }`
 fn generate_inst_enum(f: &mut Formatter, insts: &[dsl::Inst]) {
     generate_derive(f);
-    fmtln!(f, "pub enum Inst {{");
+    fmtln!(f, "pub enum Inst<R: AsReg> {{");
     f.indent_push();
     for inst in insts {
         inst.generate_enum_variant(f);
@@ -43,7 +78,7 @@ fn generate_derive(f: &mut Formatter) {
 
 /// `impl std::fmt::Display for Inst { ... }`
 fn generate_inst_display_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    fmtln!(f, "impl std::fmt::Display for Inst {{");
+    fmtln!(f, "impl<R: AsReg> std::fmt::Display for Inst<R> {{");
     f.indent(|f| {
         fmtln!(f, "fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{");
         f.indent(|f| {
@@ -60,9 +95,9 @@ fn generate_inst_display_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
     fmtln!(f, "}}");
 }
 
-/// `impl Inst { ... }`
-fn generate_inst_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    fmtln!(f, "impl Inst {{");
+/// `impl Inst { fn encode... }`
+fn generate_inst_encode_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
+    fmtln!(f, "impl<R: AsReg> Inst<R> {{");
     f.indent(|f| {
         fmtln!(f, "pub fn encode(&self, b: &mut impl CodeSink, o: &impl KnownOffsetTable) {{");
         f.indent(|f| {
@@ -76,8 +111,14 @@ fn generate_inst_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
         });
         fmtln!(f, "}}");
     });
+    fmtln!(f, "}}");
+}
+
+/// `impl Inst { fn visit_operands... }`
+fn generate_inst_visit_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
+    fmtln!(f, "impl<R: AsReg> Inst<R> {{");
     f.indent(|f| {
-        fmtln!(f, "pub fn regalloc(&mut self, v: &mut impl RegallocVisitor) {{");
+        fmtln!(f, "pub fn visit_operands(&mut self, v: &mut impl OperandVisitor<R>) {{");
         f.indent(|f| {
             fmtln!(f, "match self {{");
             f.indent_push();
@@ -92,6 +133,18 @@ fn generate_inst_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
     fmtln!(f, "}}");
 }
 
+/// `pub mod build { pub fn <inst>... }`
+fn generate_inst_constructor_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
+    fmtln!(f, "pub mod build {{");
+    f.indent(|f| {
+        fmtln!(f, "use super::*;");
+        for inst in insts {
+            inst.generate_variant_constructor(f);
+        }
+    });
+    fmtln!(f, "}}");
+}
+
 pub fn maybe_file_loc(fmtstr: &str, file: &'static str, line: u32) -> Option<FileLocation> {
     if fmtstr.ends_with(['{', '}']) {
         None
@@ -101,8 +154,17 @@ pub fn maybe_file_loc(fmtstr: &str, file: &'static str, line: u32) -> Option<Fil
 }
 
 pub struct FileLocation {
-    file: &'static str,
-    line: u32,
+    pub(crate) file: &'static str,
+    pub(crate) line: u32,
+}
+
+impl FileLocation {
+    /// ```
+    /// FileLocation::new(file!(), line!());
+    /// ```
+    pub fn new(file: &'static str, line: u32) -> Self {
+        Self { file, line }
+    }
 }
 
 impl core::fmt::Display for FileLocation {

@@ -1,22 +1,22 @@
 //! Memory operands to instructions.
 
-use crate::alloc::RegallocVisitor;
+use crate::alloc::OperandVisitor;
 use crate::imm::{Simm32, Simm32PlusKnownOffset};
-use crate::reg::{self, Gpr, Gpr2MinusRsp, Size};
+use crate::reg::{self, AsReg, MinusRsp, Size};
 use crate::rex::{encode_modrm, encode_sib, Imm, RexFlags};
 use crate::sink::{CodeSink, KnownOffsetTable, Label, TrapCode};
 use arbitrary::Arbitrary;
 
 #[derive(Arbitrary, Clone, Debug)]
-pub enum Amode {
+pub enum Amode<R: AsReg> {
     ImmReg {
-        base: Gpr,
+        base: R,
         simm32: Simm32PlusKnownOffset,
         trap: Option<TrapCode>,
     },
     ImmRegRegShift {
-        base: Gpr,
-        index: Gpr2MinusRsp,
+        base: R,
+        index: MinusRsp<R>,
         scale: Scale,
         simm32: Simm32,
         trap: Option<TrapCode>,
@@ -25,7 +25,8 @@ pub enum Amode {
         target: Label,
     },
 }
-impl Amode {
+
+impl<R: AsReg> Amode<R> {
     pub fn trap_code(&self) -> Option<TrapCode> {
         match self {
             Amode::ImmReg { trap, .. } | Amode::ImmRegRegShift { trap, .. } => *trap,
@@ -51,22 +52,22 @@ impl Amode {
         }
     }
 
-    pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
+    pub fn read(&mut self, visitor: &mut impl OperandVisitor<R>) {
         match self {
             Amode::ImmReg { base, .. } => {
                 // TODO: allow regalloc to replace a virtual register with a real one.
                 // TODO: should this be a debug_assert instead, like below?
-                if base.enc() != reg::ENC_RBP && base.enc() != reg::ENC_RSP {
-                    visitor.read(base.as_mut());
+                if base.enc() != reg::enc::RBP && base.enc() != reg::enc::RSP {
+                    visitor.read(base);
                 }
             }
             Amode::ImmRegRegShift { base, index, .. } => {
                 // TODO: allow regalloc to replace a virtual register with a real one.
-                debug_assert_ne!(base.enc(), reg::ENC_RBP);
-                debug_assert_ne!(base.enc(), reg::ENC_RSP);
-                visitor.read(base.as_mut());
-                debug_assert_ne!(index.enc(), reg::ENC_RBP);
-                debug_assert_ne!(index.enc(), reg::ENC_RSP);
+                debug_assert_ne!(base.enc(), reg::enc::RBP);
+                debug_assert_ne!(base.enc(), reg::enc::RSP);
+                visitor.read(base);
+                debug_assert_ne!(index.enc(), reg::enc::RBP);
+                debug_assert_ne!(index.enc(), reg::enc::RSP);
                 visitor.read(index.as_mut());
             }
             Amode::RipRelative { .. } => todo!(),
@@ -74,13 +75,13 @@ impl Amode {
     }
 }
 
-impl std::fmt::Display for Amode {
+impl<R: AsReg> std::fmt::Display for Amode<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Amode::ImmReg { simm32, base, .. } => {
                 // Note: size is always 8; the address is 64 bits,
                 // even if the addressed operand is smaller.
-                write!(f, "{:x}({})", simm32, base.to_string(Size::Quadword))
+                write!(f, "{:x}({})", simm32, reg::enc::to_string(base.enc(), Size::Quadword))
             }
             Amode::ImmRegRegShift { simm32, base, index, scale, .. } => {
                 if scale.shift() > 1 {
@@ -88,8 +89,8 @@ impl std::fmt::Display for Amode {
                         f,
                         "{:x}({}, {}, {})",
                         simm32,
-                        base.to_string(Size::Quadword),
-                        index.to_string(Size::Quadword),
+                        reg::enc::to_string(base.enc(), Size::Quadword),
+                        reg::enc::to_string(index.enc(), Size::Quadword),
                         scale.shift()
                     )
                 } else {
@@ -97,8 +98,8 @@ impl std::fmt::Display for Amode {
                         f,
                         "{:x}({}, {})",
                         simm32,
-                        base.to_string(Size::Quadword),
-                        index.to_string(Size::Quadword)
+                        reg::enc::to_string(base.enc(), Size::Quadword),
+                        reg::enc::to_string(index.enc(), Size::Quadword),
                     )
                 }
             }
@@ -130,45 +131,51 @@ impl Scale {
 
 #[derive(Arbitrary, Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
-pub enum GprMem {
-    Gpr(Gpr),
-    Mem(Amode),
+pub enum GprMem<R: AsReg> {
+    Gpr(R),
+    Mem(Amode<R>),
 }
-impl GprMem {
+
+impl<R: AsReg> GprMem<R> {
     pub fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
         match self {
-            GprMem::Gpr(gpr) => gpr.always_emit_if_8bit_needed(rex),
+            GprMem::Gpr(gpr) => {
+                let enc_reg = gpr.enc();
+                if (4..=7).contains(&enc_reg) {
+                    rex.always_emit();
+                }
+            }
             GprMem::Mem(_) => {}
         }
     }
 
     pub fn to_string(&self, size: Size) -> String {
         match self {
-            GprMem::Gpr(gpr2) => gpr2.to_string(size).to_owned(),
+            GprMem::Gpr(gpr) => reg::enc::to_string(gpr.enc(), size).to_owned(),
             GprMem::Mem(amode) => amode.to_string(),
         }
     }
 
-    pub fn read(&mut self, visitor: &mut impl RegallocVisitor) {
+    pub fn read(&mut self, visitor: &mut impl OperandVisitor<R>) {
         match self {
-            GprMem::Gpr(gpr) => gpr.read(visitor),
+            GprMem::Gpr(gpr) => visitor.read(gpr),
             GprMem::Mem(amode) => amode.read(visitor),
         }
     }
 
-    pub fn read_write(&mut self, visitor: &mut impl RegallocVisitor) {
+    pub fn read_write(&mut self, visitor: &mut impl OperandVisitor<R>) {
         match self {
-            GprMem::Gpr(gpr) => gpr.read_write(visitor),
+            GprMem::Gpr(gpr) => visitor.read_write(gpr),
             GprMem::Mem(amode) => amode.read(visitor),
         }
     }
 }
 
-pub fn emit_modrm_sib_disp(
+pub fn emit_modrm_sib_disp<R: AsReg>(
     sink: &mut impl CodeSink,
     offsets: &impl KnownOffsetTable,
     enc_g: u8,
-    mem_e: &Amode,
+    mem_e: &Amode<R>,
     bytes_at_end: u8,
     evex_scaling: Option<i8>,
 ) {
@@ -181,7 +188,7 @@ pub fn emit_modrm_sib_disp(
             // optional immediate. If rsp is the base register, however, then a
             // SIB byte must be used.
             let enc_e_low3 = enc_e & 7;
-            if enc_e_low3 == reg::ENC_RSP {
+            if enc_e_low3 == reg::enc::RSP {
                 // Displacement from RSP is encoded with a SIB byte where
                 // the index and base are both encoded as RSP's encoding of
                 // 0b100. This special encoding means that the index register
@@ -194,7 +201,7 @@ pub fn emit_modrm_sib_disp(
                 // If the base register is rbp and there's no offset then force
                 // a 1-byte zero offset since otherwise the encoding would be
                 // invalid.
-                if enc_e_low3 == reg::ENC_RBP {
+                if enc_e_low3 == reg::enc::RBP {
                     imm.force_immediate();
                 }
                 sink.put1(encode_modrm(imm.m0d(), enc_g & 7, enc_e & 7));
@@ -212,14 +219,14 @@ pub fn emit_modrm_sib_disp(
             // ever be rsp. Note, though, that the encoding of r12, whose three
             // lower bits match the encoding of rsp, is explicitly allowed with
             // REX bytes so only rsp is disallowed.
-            assert!(enc_index != reg::ENC_RSP);
+            assert!(enc_index != reg::enc::RSP);
 
             // If the offset is zero then there is no immediate. Note, though,
             // that if the base register's lower three bits are `101` then an
             // offset must be present. This is a special case in the encoding of
             // the SIB byte and requires an explicit displacement with rbp/r13.
             let mut imm = Imm::new(simm32.value(), evex_scaling);
-            if enc_base & 7 == reg::ENC_RBP {
+            if enc_base & 7 == reg::enc::RBP {
                 imm.force_immediate();
             }
 

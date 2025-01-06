@@ -1,17 +1,21 @@
 use crate::dsl;
 
 impl dsl::Location {
-    /// `<operand type>`
+    /// `<operand type>`, if the operand has a type (i.e., not fixed registers).
     #[must_use]
-    pub fn generate_type(&self) -> Option<&str> {
+    pub fn generate_type(&self, generic: Option<&str>) -> Option<String> {
         use dsl::Location::*;
+        let generic = match generic {
+            Some(ty) => format!("<{ty}>"),
+            None => "".into(),
+        };
         match self {
             al | ax | eax | rax => None,
-            imm8 => Some("Imm8"),
-            imm16 => Some("Imm16"),
-            imm32 => Some("Imm32"),
-            r8 | r16 | r32 | r64 => Some("Gpr"),
-            rm8 | rm16 | rm32 | rm64 => Some("GprMem"),
+            imm8 => Some("Imm8".into()),
+            imm16 => Some("Imm16".into()),
+            imm32 => Some("Imm32".into()),
+            r8 | r16 | r32 | r64 => Some(format!("Gpr{generic}")),
+            rm8 | rm16 | rm32 | rm64 => Some(format!("GprMem{generic}")),
         }
     }
 
@@ -53,7 +57,7 @@ impl dsl::Location {
     pub fn generate_fixed_reg(&self) -> Option<&str> {
         use dsl::Location::*;
         match self {
-            al | ax | eax | rax => Some("Gpr::new(reg::ENC_RAX.into())"),
+            al | ax | eax | rax => Some("reg::enc::RAX"),
             imm8 | imm16 | imm32 | r8 | r16 | r32 | r64 | rm8 | rm16 | rm32 | rm64 => None,
         }
     }

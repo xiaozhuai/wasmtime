@@ -2,16 +2,17 @@
 
 mod alloc;
 pub mod fuzz;
+pub mod gen;
 mod imm;
 mod mem;
 mod reg;
 mod rex;
 mod sink;
 
-pub use alloc::RegallocVisitor;
+pub use alloc::OperandVisitor;
 pub use imm::{Extension, Imm16, Imm32, Imm8, Simm32};
 pub use mem::{Amode, GprMem, Scale};
-pub use reg::{Gpr, Gpr2MinusRsp, Size};
+pub use reg::{AsReg, Gpr, MinusRsp, Size};
 pub use rex::RexFlags;
 pub use sink::{CodeSink, KnownOffsetTable, Label, TrapCode};
 
@@ -24,4 +25,12 @@ include!(concat!(env!("OUT_DIR"), "/assembler.rs"));
 fn emit_modrm(buffer: &mut impl CodeSink, enc_reg_g: u8, rm_e: u8) {
     let modrm = rex::encode_modrm(0b11, enc_reg_g & 7, rm_e & 7);
     buffer.put1(modrm);
+}
+
+/// TODO
+pub fn generated_files() -> Vec<std::path::PathBuf> {
+    env!("ASSEMBLER_BUILT_FILES")
+        .split(":")
+        .map(std::path::PathBuf::from)
+        .collect()
 }

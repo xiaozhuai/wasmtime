@@ -766,6 +766,7 @@ dependencies = [
 name = "cranelift-codegen-meta"
 version = "0.115.0"
 dependencies = [
+ "cranelift-assembler",
  "cranelift-codegen-shared",
 ]
 

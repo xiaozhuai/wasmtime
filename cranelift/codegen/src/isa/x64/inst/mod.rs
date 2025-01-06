@@ -11,7 +11,6 @@ use crate::isa::{CallConv, FunctionAlignment};
 use crate::{machinst::*, trace};
 use crate::{settings, CodegenError, CodegenResult};
 use alloc::boxed::Box;
-use regalloc2::VReg;
 use smallvec::{smallvec, SmallVec};
 use std::fmt::{self, Write};
 use std::string::{String, ToString};
@@ -1978,6 +1977,38 @@ impl fmt::Debug for Inst {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum PairedGpr {
+    Read { read: Gpr },
+    ReadWrite { read: Gpr, write: WritableGpr },
+}
+
+impl cranelift_assembler::AsReg for PairedGpr {
+    fn enc(&self) -> u8 {
+        match self {
+            PairedGpr::Read { read } => enc(read),
+            PairedGpr::ReadWrite { write, read } => {
+                let read = enc(read);
+                let write = enc(&write.to_reg());
+                assert_eq!(read, write);
+                write
+            }
+        }
+    }
+
+    fn new(_: u8) -> Self {
+        panic!("disallow creation of new assembler registers")
+    }
+}
+
+fn enc(gpr: &Gpr) -> u8 {
+    if let Some(real) = gpr.to_reg().to_real_reg() {
+        real.hw_enc()
+    } else {
+        unreachable!()
+    }
+}
+
 /// A wrapper to implement the `cranelift-assembler` register allocation trait,
 /// `RegallocVisitor`, in terms of the trait used here, `OperandVisitor`.
 struct AssemblerRegallocVisitor<'a, T>
@@ -1987,45 +2018,32 @@ where
     collector: &'a mut T,
 }
 
-impl<'a, T: OperandVisitor> cranelift_assembler::RegallocVisitor
+impl<'a, T: OperandVisitor> cranelift_assembler::OperandVisitor<PairedGpr>
     for AssemblerRegallocVisitor<'a, T>
 {
-    fn read(&mut self, reg: &mut u32) {
-        use regalloc2::{OperandConstraint::Reg, OperandKind::Use, OperandPos::Early};
-        roundtrip_assembler_gpr(reg, |r| self.collector.add_operand(r, Reg, Use, Early));
+    fn read(&mut self, reg: &mut PairedGpr) {
+        match reg {
+            PairedGpr::Read { read } => self.collector.reg_use(read),
+            PairedGpr::ReadWrite { .. } => unreachable!(),
+        }
     }
 
-    fn read_write(&mut self, reg: &mut u32) {
-        use regalloc2::{OperandConstraint::Reg, OperandKind::Use, OperandPos::Early};
-        // TODO: it's unclear if this is correct: we `rw` operands are indeed
-        // read "early" but it's unclear whether we need to also tell regalloc2
-        // that they are also written "late."
-        roundtrip_assembler_gpr(reg, |r| self.collector.add_operand(r, Reg, Use, Early));
+    fn read_write(&mut self, reg: &mut PairedGpr) {
+        match reg {
+            PairedGpr::Read { .. } => unreachable!(),
+            PairedGpr::ReadWrite { read, write } => {
+                self.collector.reg_use(read);
+                self.collector.reg_reuse_def(write, 0);
+            }
+        }
     }
 
-    fn fixed_read(&mut self, _reg: &mut u32) {
+    fn fixed_read(&mut self, _reg: &PairedGpr) {
         todo!()
     }
 
-    fn fixed_read_write(&mut self, _reg: &mut u32) {
+    fn fixed_read_write(&mut self, _reg: &PairedGpr) {
         todo!()
-    }
-}
-
-/// An unfortunate helper function for converting the raw `u32` of an assembler
-/// register from and to a regalloc2-`Reg`. It's unfortunate because it uses a
-/// bunch of conversions that are not truly necessary.
-fn roundtrip_assembler_gpr(asm: &mut u32, mut collect: impl FnMut(&mut Reg) -> ()) {
-    use regalloc2::RegClass;
-    let vreg = VReg::new(*asm as usize, RegClass::Int);
-    let mut reg = Reg::from(vreg);
-    collect(&mut reg);
-    if let Some(real) = reg.to_real_reg() {
-        *asm = real.hw_enc() as u32;
-    } else if let Some(virt) = reg.to_virtual_reg() {
-        *asm = virt.index() as u32;
-    } else {
-        unreachable!()
     }
 }
 
@@ -2767,7 +2785,7 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         }
 
         Inst::External { inst } => {
-            inst.regalloc(&mut AssemblerRegallocVisitor { collector });
+            inst.visit_operands(&mut AssemblerRegallocVisitor { collector });
         }
     }
 }
