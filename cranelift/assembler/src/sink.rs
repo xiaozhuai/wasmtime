@@ -29,10 +29,17 @@ pub trait CodeSink {
     /// TODO: I would prefer to keep this away from this trait (but see
     /// how we lower `Amode`).
     fn add_trap(&mut self, code: TrapCode);
+
+    /// TODO: I would prefer to keep this away from this trait (but see
+    /// how we lower `Amode`).
+    fn get_label_for_constant(&mut self, c: Constant) -> Label;
 }
 
 #[derive(Debug, Clone, Arbitrary)]
 pub struct Label(pub u32);
+
+#[derive(Debug, Clone, Arbitrary)]
+pub struct Constant(pub u32);
 
 #[derive(Debug, Clone, Copy, Arbitrary)]
 pub struct TrapCode(pub NonZeroU8);
@@ -62,6 +69,10 @@ impl CodeSink for Vec<u8> {
     fn use_label_at_offset(&mut self, _: u32, _: Label) {}
 
     fn add_trap(&mut self, _: TrapCode) {}
+
+    fn get_label_for_constant(&mut self, c: Constant) -> Label {
+        Label(c.0)
+    }
 }
 
 /// A table mapping `KnownOffset` identifiers to their `i32` offset values.

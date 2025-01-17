@@ -82,6 +82,13 @@ impl cranelift_assembler::CodeSink for MachBuffer<Inst> {
     fn add_trap(&mut self, code: cranelift_assembler::TrapCode) {
         self.add_trap(code.into());
     }
+
+    fn get_label_for_constant(
+        &mut self,
+        c: cranelift_assembler::Constant,
+    ) -> cranelift_assembler::Label {
+        self.get_label_for_constant(c.into()).into()
+    }
 }
 
 impl From<cranelift_assembler::TrapCode> for TrapCode {
@@ -92,6 +99,18 @@ impl From<cranelift_assembler::TrapCode> for TrapCode {
 
 impl From<cranelift_assembler::Label> for MachLabel {
     fn from(value: cranelift_assembler::Label) -> Self {
+        Self::from_u32(value.0)
+    }
+}
+
+impl From<MachLabel> for cranelift_assembler::Label {
+    fn from(value: MachLabel) -> Self {
+        Self(value.as_u32())
+    }
+}
+
+impl From<cranelift_assembler::Constant> for VCodeConstant {
+    fn from(value: cranelift_assembler::Constant) -> Self {
         Self::from_u32(value.0)
     }
 }

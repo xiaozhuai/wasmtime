@@ -90,13 +90,14 @@ impl Format {
         self.locations().map(Location::kind).collect()
     }
 
-    pub fn operands_with_ty<'a, 'b: 'a>(
+    pub fn operands_with_ty<'a>(
         &'a self,
-        generic: Option<&'b str>,
+        needs_generic: fn(Mutability) -> Option<String>,
     ) -> impl Iterator<Item = (Location, String)> + 'a {
-        self.locations().cloned().filter_map(move |l| {
-            let ty = l.generate_type(generic)?;
-            Some((l, ty))
+        self.operands.iter().filter_map(move |o| {
+            let generic = needs_generic(o.mutability);
+            let ty = o.location.generate_type(generic)?;
+            Some((o.location, ty))
         })
     }
 }
@@ -245,6 +246,17 @@ pub enum OperandKind {
     Imm(Location),
     Reg(Location),
     RegMem(Location),
+}
+
+impl OperandKind {
+    pub fn location(&self) -> Location {
+        match self {
+            OperandKind::FixedReg(location) => *location,
+            OperandKind::Imm(location) => *location,
+            OperandKind::Reg(location) => *location,
+            OperandKind::RegMem(location) => *location,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

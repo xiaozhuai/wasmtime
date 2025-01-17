@@ -1,20 +1,28 @@
 use super::{fmtln, generate_derive, Formatter};
-use crate::dsl::{self};
+use crate::dsl;
 
 impl dsl::Inst {
     /// `struct <inst> { <op>: Reg, <op>: Reg, ... }`
     pub fn generate_struct(&self, f: &mut Formatter) {
         let struct_name = self.struct_name_with_generic();
-        let struct_fields = self.generate_struct_fields();
         let where_clause = if self.requires_generic() {
-            "where R: AsReg"
+            "where R: Registers"
         } else {
             ""
         };
 
         f.line(format!("/// `{self}`"), None);
         generate_derive(f);
-        fmtln!(f, "pub struct {struct_name} {where_clause} {{ {struct_fields} }}");
+        fmtln!(f, "pub struct {struct_name} {where_clause} {{");
+        f.indent(|f| {
+            for k in &self.format.operands {
+                if let Some(ty) = k.generate_type() {
+                    let loc = k.location;
+                    fmtln!(f, "pub {loc}: {ty},");
+                }
+            }
+        });
+        fmtln!(f, "}}");
     }
 
     /// `<class name>_<format name>`
@@ -39,20 +47,10 @@ impl dsl::Inst {
 
     fn generate_impl_block_start(&self) -> &str {
         if self.requires_generic() {
-            "impl<R: AsReg>"
+            "impl<R: Registers>"
         } else {
             "impl"
         }
-    }
-
-    /// `pub <op>: <type>, *`
-    #[must_use]
-    fn generate_struct_fields(&self) -> String {
-        comma_join(
-            self.format
-                .operands_with_ty(Some("R"))
-                .map(|(l, ty)| format!("pub {l}: {ty}")),
-        )
     }
 
     /// `<inst>(<inst>),`
@@ -85,16 +83,19 @@ impl dsl::Inst {
         let variant_name = self.struct_name();
         let params = comma_join(
             self.format
-                .operands_with_ty(Some("R"))
-                .map(|(l, ty)| format!("{l}: {ty}")),
+                .operands
+                .iter()
+                .filter_map(|o| o.generate_type().map(|t| format!("{}: {}", o.location, t))),
         );
         let args = comma_join(
             self.format
-                .operands_with_ty(None)
-                .map(|(l, _)| format!("{l}")),
+                .operands
+                .iter()
+                .filter(|o| !matches!(o.location.kind(), dsl::OperandKind::FixedReg(_)))
+                .map(|o| o.location.to_string()),
         );
 
-        fmtln!(f, "pub fn {variant_name}<R: AsReg>({params}) -> Inst<R> {{");
+        fmtln!(f, "pub fn {variant_name}<R: Registers>({params}) -> Inst<R> {{");
         f.indent(|f| {
             fmtln!(f, "Inst::{variant_name}({variant_name} {{ {args} }})",);
         });
@@ -156,7 +157,7 @@ impl dsl::Inst {
     pub fn generate_regalloc_function(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
         let extra_generic_bound = if !self.requires_generic() {
-            "<R: AsReg>"
+            "<R: Registers>"
         } else {
             ""
         };
@@ -169,18 +170,27 @@ impl dsl::Inst {
                     }
                     FixedReg(_) => {
                         let call = o.mutability.generate_regalloc_call();
+                        let ty = o.mutability.generate_type();
                         let Some(fixed) = o.location.generate_fixed_reg() else {
                             unreachable!()
                         };
-                        fmtln!(f, "visitor.fixed_{call}(&R::new({fixed}));");
+                        fmtln!(f, "visitor.fixed_{call}(&R::{ty}Gpr::new({fixed}));");
                     }
                     Reg(reg) => {
                         let call = o.mutability.generate_regalloc_call();
-                        fmtln!(f, "self.{reg}.{call}(visitor);");
+                        fmtln!(f, "visitor.{call}(self.{reg}.as_mut());");
                     }
                     RegMem(rm) => {
                         let call = o.mutability.generate_regalloc_call();
-                        fmtln!(f, "self.{rm}.{call}(visitor);");
+                        fmtln!(f, "match &mut self.{rm} {{");
+                        f.indent(|f| {
+                            fmtln!(f, "GprMem::Gpr(r) => visitor.{call}(r),");
+                            fmtln!(
+                                f,
+                                "GprMem::Mem(m) => m.as_mut().iter_mut().for_each(|r| visitor.read(r)),"
+                            );
+                        });
+                        fmtln!(f, "}}");
                     }
                 }
             }
@@ -213,14 +223,27 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn x64_assemble_<inst>(&mut self, <params>) -> Inst<generic type> { ... }`
-    pub fn generate_isle_macro(&self, f: &mut Formatter, generic_type_name: &str) {
-        let inst_ty = format!("cranelift_assembler::Inst<{generic_type_name}>");
+    /// `fn x64_<inst>(&mut self, <params>) -> Inst<R> { ... }`
+    pub fn generate_isle_macro(&self, f: &mut Formatter, read_ty: &str, read_write_ty: &str) {
+        use dsl::OperandKind::*;
         let struct_name = self.struct_name();
         let operands = self
             .format
-            .operands_with_ty(Some("PairedGpr"))
+            .operands
+            .iter()
+            .filter_map(|o| Some((o.location, o.generate_mut_ty(read_ty, read_write_ty)?)))
             .collect::<Vec<_>>();
+        let ret_ty = match self.format.operands.first().unwrap().location.kind() {
+            FixedReg(_) => format!("cranelift_assembler::Gpr<{read_write_ty}>"),
+            Imm(_) => unreachable!(),
+            Reg(_) => format!("cranelift_assembler::Gpr<{read_write_ty}>"),
+            RegMem(_) => format!("cranelift_assembler::GprMem<{read_write_ty}, {read_ty}>"),
+        };
+        let ret_val = match self.format.operands.first().unwrap().location.kind() {
+            FixedReg(_) => format!("todo!()"),
+            Imm(_) => unreachable!(),
+            Reg(loc) | RegMem(loc) => format!("{loc}.clone()"),
+        };
         let params = comma_join(
             operands
                 .iter()
@@ -228,26 +251,42 @@ impl dsl::Inst {
         );
         let args = comma_join(operands.iter().map(|(l, _)| format!("{l}.clone()")));
 
-        fmtln!(f, "fn x64_assemble_{struct_name}(&mut self, {params}) -> {inst_ty} {{",);
+        // TODO: parameterize CraneliftRegisters?
+        fmtln!(f, "fn x64_{struct_name}(&mut self, {params}) -> {ret_ty} {{",);
         f.indent(|f| {
-            fmtln!(f, "cranelift_assembler::build::{struct_name}({args})",);
+            fmtln!(f, "let inst = cranelift_assembler::build::{struct_name}({args});");
+            fmtln!(f, "self.lower_ctx.emit(MInst::External {{ inst }});");
+            fmtln!(f, "{ret_val}")
         });
         fmtln!(f, "}}");
     }
 
-    /// `(decl x64_assemble_<inst> (<params>) AssemblerInst)
-    ///  (extern constructor assemble_<inst> assemble_<inst>)`
+    /// `(decl x64_<inst> (<params>) <return>)
+    ///  (extern constructor x64_<inst> x64_<inst>)`
     pub fn generate_isle_definition(&self, f: &mut Formatter) {
+        use dsl::OperandKind::*;
+
         let struct_name = self.struct_name();
-        let rule_name = format!("x64_assemble_{struct_name}");
+        let rule_name = format!("x64_{struct_name}");
         let params = self
             .format
-            .operands_with_ty(None)
-            .map(|(_, ty)| format!("Assembler{ty}"))
+            .operands
+            .iter()
+            .flat_map(|o| match o.location.kind() {
+                FixedReg(_) => None,
+                Imm(loc) => Some(format!("AssemblerImm{}", loc.bits())),
+                Reg(_) => Some(format!("Assembler{}Gpr", o.mutability.generate_type())),
+                RegMem(_) => Some(format!("Assembler{}GprMem", o.mutability.generate_type())),
+            })
             .collect::<Vec<_>>()
             .join(" ");
+        let ret = match self.format.operands.first().unwrap().location.kind() {
+            Imm(_) => unreachable!(),
+            FixedReg(_) | Reg(_) => "AssemblerReadWriteGpr",
+            RegMem(_) => "AssemblerReadWriteGprMem",
+        };
 
-        f.line(format!("(decl {rule_name} ({params}) AssemblerInst)"), None);
+        f.line(format!("(decl {rule_name} ({params}) {ret})"), None);
         f.line(format!("(extern constructor {rule_name} {rule_name})"), None);
     }
 }

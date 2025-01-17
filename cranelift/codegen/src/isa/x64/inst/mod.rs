@@ -1,5 +1,6 @@
 //! This module defines x86_64-specific machine instruction types.
 
+use arbitrary::Arbitrary;
 pub use emit_state::EmitState;
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
@@ -1977,23 +1978,48 @@ impl fmt::Debug for Inst {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CraneliftRegisters;
+impl cranelift_assembler::Registers for CraneliftRegisters {
+    type ReadGpr = Gpr;
+    type ReadWriteGpr = PairedGpr;
+}
+
 #[derive(Clone, Copy, Debug)]
-pub enum PairedGpr {
-    Read { read: Gpr },
-    ReadWrite { read: Gpr, write: WritableGpr },
+pub struct PairedGpr {
+    pub(crate) read: Gpr,
+    pub(crate) write: WritableGpr,
+}
+
+impl<'a> Arbitrary<'a> for PairedGpr {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        todo!()
+    }
+}
+
+impl<'a> Arbitrary<'a> for Gpr {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        todo!()
+    }
 }
 
 impl cranelift_assembler::AsReg for PairedGpr {
     fn enc(&self) -> u8 {
-        match self {
-            PairedGpr::Read { read } => enc(read),
-            PairedGpr::ReadWrite { write, read } => {
-                let read = enc(read);
-                let write = enc(&write.to_reg());
-                assert_eq!(read, write);
-                write
-            }
-        }
+        let PairedGpr { read, write } = self;
+        let read = enc(read);
+        let write = enc(&write.to_reg());
+        assert_eq!(read, write);
+        write
+    }
+
+    fn new(_: u8) -> Self {
+        panic!("disallow creation of new assembler registers")
+    }
+}
+
+impl cranelift_assembler::AsReg for Gpr {
+    fn enc(&self) -> u8 {
+        enc(self)
     }
 
     fn new(_: u8) -> Self {
@@ -2018,27 +2044,20 @@ where
     collector: &'a mut T,
 }
 
-impl<'a, T: OperandVisitor> cranelift_assembler::OperandVisitor<PairedGpr>
+impl<'a, T: OperandVisitor> cranelift_assembler::OperandVisitor<CraneliftRegisters>
     for AssemblerRegallocVisitor<'a, T>
 {
-    fn read(&mut self, reg: &mut PairedGpr) {
-        match reg {
-            PairedGpr::Read { read } => self.collector.reg_use(read),
-            PairedGpr::ReadWrite { .. } => unreachable!(),
-        }
+    fn read(&mut self, reg: &mut Gpr) {
+        self.collector.reg_use(reg);
     }
 
     fn read_write(&mut self, reg: &mut PairedGpr) {
-        match reg {
-            PairedGpr::Read { .. } => unreachable!(),
-            PairedGpr::ReadWrite { read, write } => {
-                self.collector.reg_use(read);
-                self.collector.reg_reuse_def(write, 0);
-            }
-        }
+        let PairedGpr { read, write } = reg;
+        self.collector.reg_use(read);
+        self.collector.reg_reuse_def(write, 0);
     }
 
-    fn fixed_read(&mut self, _reg: &PairedGpr) {
+    fn fixed_read(&mut self, _reg: &Gpr) {
         todo!()
     }
 

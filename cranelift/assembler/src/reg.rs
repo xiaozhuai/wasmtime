@@ -1,6 +1,6 @@
 //! Pure register operands.
 
-use crate::{alloc::OperandVisitor, fuzz::FuzzReg, rex::RexFlags};
+use crate::{fuzz::FuzzReg, rex::RexFlags};
 use arbitrary::Arbitrary;
 
 pub mod enc {
@@ -127,12 +127,21 @@ pub mod enc {
     }
 }
 
+pub trait Registers {
+    type ReadGpr: AsReg + for<'a> Arbitrary<'a>;
+    type ReadWriteGpr: AsReg + for<'a> Arbitrary<'a>;
+}
+
 /// TODO
 pub trait AsReg: Clone + std::fmt::Debug {
     // TODO: only useful for fuzz generation.
     fn new(enc: u8) -> Self;
     fn enc(&self) -> u8;
     //     fn to_string(&self, size: Size) -> &str;
+
+    fn to_string(&self, size: Size) -> &str {
+        enc::to_string(self.enc(), size)
+    }
 }
 
 impl AsReg for u8 {
@@ -143,10 +152,6 @@ impl AsReg for u8 {
     fn enc(&self) -> u8 {
         *self
     }
-
-    // fn to_string(&self, size: Size) -> &str {
-    //     todo!()
-    // }
 }
 
 /// A general purpose x64 register (e.g., `%rax`).
@@ -167,6 +172,7 @@ impl<R: AsReg> Gpr<R> {
         Self(reg)
     }
 
+    // TODO: impl Deref instead?
     pub fn enc(&self) -> u8 {
         let enc = self.0.enc();
         assert!(enc < 16, "invalid register: {}", enc);
@@ -184,24 +190,41 @@ impl<R: AsReg> Gpr<R> {
         }
     }
 
-    pub fn read(&mut self, visitor: &mut impl OperandVisitor<R>) {
-        visitor.read(&mut self.0);
-    }
-
-    pub fn read_write(&mut self, visitor: &mut impl OperandVisitor<R>) {
-        visitor.read_write(&mut self.0);
-    }
-
-    // /// Allow the register allocator to modify this register in place.
-    // pub fn as_mut(&mut self) -> &mut u32 {
-    //     &mut self
+    // pub fn read<T: AsReg>(&mut self, visitor: &mut impl OperandVisitor<T>) {
+    //     visitor.read(&mut self.0 );
     // }
+
+    // pub fn read_write(&mut self, visitor: &mut impl OperandVisitor<R>) {
+    //     visitor.read_write(&mut self.0);
+    // }
+
+    /// Allow the register allocator to modify this register in place.
+    pub fn as_mut(&mut self) -> &mut R {
+        &mut self.0
+    }
+
+    /// Allow the register allocator to modify this register in place.
+    pub fn as_ref(&self) -> &R {
+        &self.0
+    }
 
     // /// Allow external users to inspect this register.
     // pub fn as_u32(&self) -> u32 {
     //     self.0
     // }
 }
+
+// impl<R: AsReg> Gpr<R> {
+//     pub fn read<U>(&mut self, visitor: &mut impl OperandVisitor<R, U>) {
+//         visitor.read(&mut self.0);
+//     }
+// }
+
+// impl<RW: AsReg> Gpr<RW> {
+//     pub fn read_write<U>(&mut self, visitor: &mut impl OperandVisitor<U, RW>) {
+//         visitor.read_write(&mut self.0);
+//     }
+// }
 
 impl<'a, R: AsReg> Arbitrary<'a> for Gpr<R> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
@@ -222,10 +245,14 @@ pub enum Size {
 pub struct MinusRsp<R: AsReg>(R);
 
 impl<R: AsReg> MinusRsp<R> {
+    pub fn new(reg: R) -> Self {
+        Self(reg)
+    }
     pub fn as_mut(&mut self) -> &mut R {
         &mut self.0
     }
     pub fn enc(&self) -> u8 {
+        assert_ne!(self.0.enc(), enc::RSP, "invalid register: %rsp");
         self.0.enc()
     }
 }

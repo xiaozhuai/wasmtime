@@ -1,10 +1,9 @@
 //! Memory operands to instructions.
 
-use crate::alloc::OperandVisitor;
 use crate::imm::{Simm32, Simm32PlusKnownOffset};
 use crate::reg::{self, AsReg, MinusRsp, Size};
 use crate::rex::{encode_modrm, encode_sib, Imm, RexFlags};
-use crate::sink::{CodeSink, KnownOffsetTable, Label, TrapCode};
+use crate::sink::{CodeSink, Constant, KnownOffsetTable, Label, TrapCode};
 use arbitrary::Arbitrary;
 
 #[derive(Arbitrary, Clone, Debug)]
@@ -22,7 +21,7 @@ pub enum Amode<R: AsReg> {
         trap: Option<TrapCode>,
     },
     RipRelative {
-        target: Label,
+        target: DeferredTarget,
     },
 }
 
@@ -38,11 +37,17 @@ impl<R: AsReg> Amode<R> {
         match self {
             Amode::ImmReg { base, .. } => {
                 let enc_e = base.enc();
+                // TODO: debug_assert_ne!(enc_e, reg::enc::RSP);
+                // TODO: debug_assert_ne!(enc_e, reg::enc::RBP);
                 rex.emit_two_op(sink, enc_g, enc_e);
             }
             Amode::ImmRegRegShift { base: reg_base, index: reg_index, .. } => {
                 let enc_base = reg_base.enc();
+                // TODO: debug_assert_ne!(enc_base, reg::enc::RSP);
+                // TODO: debug_assert_ne!(enc_base, reg::enc::RBP);
                 let enc_index = reg_index.enc();
+                // TODO: debug_assert_ne!(enc_index, reg::enc::RSP);
+                // TODO: debug_assert_ne!(enc_index, reg::enc::RBP);
                 rex.emit_three_op(sink, enc_g, enc_index, enc_base);
             }
             Amode::RipRelative { .. } => {
@@ -52,27 +57,25 @@ impl<R: AsReg> Amode<R> {
         }
     }
 
-    pub fn read(&mut self, visitor: &mut impl OperandVisitor<R>) {
+    pub fn as_mut<'a>(&'a mut self) -> Vec<&'a mut R> {
         match self {
             Amode::ImmReg { base, .. } => {
-                // TODO: allow regalloc to replace a virtual register with a real one.
-                // TODO: should this be a debug_assert instead, like below?
-                if base.enc() != reg::enc::RBP && base.enc() != reg::enc::RSP {
-                    visitor.read(base);
-                }
+                vec![base]
             }
             Amode::ImmRegRegShift { base, index, .. } => {
-                // TODO: allow regalloc to replace a virtual register with a real one.
-                debug_assert_ne!(base.enc(), reg::enc::RBP);
-                debug_assert_ne!(base.enc(), reg::enc::RSP);
-                visitor.read(base);
-                debug_assert_ne!(index.enc(), reg::enc::RBP);
-                debug_assert_ne!(index.enc(), reg::enc::RSP);
-                visitor.read(index.as_mut());
+                vec![base, index.as_mut()]
             }
-            Amode::RipRelative { .. } => todo!(),
+            Amode::RipRelative { .. } => {
+                vec![]
+            }
         }
     }
+}
+
+#[derive(Arbitrary, Clone, Debug)]
+pub enum DeferredTarget {
+    Label(Label),
+    Constant(Constant),
 }
 
 impl<R: AsReg> std::fmt::Display for Amode<R> {
@@ -81,26 +84,17 @@ impl<R: AsReg> std::fmt::Display for Amode<R> {
             Amode::ImmReg { simm32, base, .. } => {
                 // Note: size is always 8; the address is 64 bits,
                 // even if the addressed operand is smaller.
-                write!(f, "{:x}({})", simm32, reg::enc::to_string(base.enc(), Size::Quadword))
+                let base = reg::enc::to_string(base.enc(), Size::Quadword);
+                write!(f, "{simm32:x}({base})")
             }
             Amode::ImmRegRegShift { simm32, base, index, scale, .. } => {
+                let base = reg::enc::to_string(base.enc(), Size::Quadword);
+                let index = reg::enc::to_string(index.enc(), Size::Quadword);
                 if scale.shift() > 1 {
-                    write!(
-                        f,
-                        "{:x}({}, {}, {})",
-                        simm32,
-                        reg::enc::to_string(base.enc(), Size::Quadword),
-                        reg::enc::to_string(index.enc(), Size::Quadword),
-                        scale.shift()
-                    )
+                    let shift = scale.shift();
+                    write!(f, "{simm32:x}({base}, {index}, {shift})")
                 } else {
-                    write!(
-                        f,
-                        "{:x}({}, {})",
-                        simm32,
-                        reg::enc::to_string(base.enc(), Size::Quadword),
-                        reg::enc::to_string(index.enc(), Size::Quadword),
-                    )
+                    write!(f, "{simm32:x}({base}, {index})")
                 }
             }
             Amode::RipRelative { .. } => write!(f, "(%rip)"),
@@ -116,6 +110,15 @@ pub enum Scale {
     Eight,
 }
 impl Scale {
+    pub fn new(enc: u8) -> Self {
+        match enc {
+            0b00 => Scale::One,
+            0b01 => Scale::Two,
+            0b10 => Scale::Four,
+            0b11 => Scale::Eight,
+            _ => panic!("invalid scale encoding: {enc}"),
+        }
+    }
     fn enc(&self) -> u8 {
         match self {
             Scale::One => 0b00,
@@ -131,12 +134,12 @@ impl Scale {
 
 #[derive(Arbitrary, Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
-pub enum GprMem<R: AsReg> {
+pub enum GprMem<R: AsReg, M: AsReg> {
     Gpr(R),
-    Mem(Amode<R>),
+    Mem(Amode<M>),
 }
 
-impl<R: AsReg> GprMem<R> {
+impl<R: AsReg, M: AsReg> GprMem<R, M> {
     pub fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
         match self {
             GprMem::Gpr(gpr) => {
@@ -153,20 +156,6 @@ impl<R: AsReg> GprMem<R> {
         match self {
             GprMem::Gpr(gpr) => reg::enc::to_string(gpr.enc(), size).to_owned(),
             GprMem::Mem(amode) => amode.to_string(),
-        }
-    }
-
-    pub fn read(&mut self, visitor: &mut impl OperandVisitor<R>) {
-        match self {
-            GprMem::Gpr(gpr) => visitor.read(gpr),
-            GprMem::Mem(amode) => amode.read(visitor),
-        }
-    }
-
-    pub fn read_write(&mut self, visitor: &mut impl OperandVisitor<R>) {
-        match self {
-            GprMem::Gpr(gpr) => visitor.read_write(gpr),
-            GprMem::Mem(amode) => amode.read(visitor),
         }
     }
 }
@@ -242,7 +231,12 @@ pub fn emit_modrm_sib_disp<R: AsReg>(
             sink.put1(encode_modrm(0b00, enc_g & 7, 0b101));
 
             let offset = sink.cur_offset();
-            sink.use_label_at_offset(offset, target.clone());
+
+            let target = match target {
+                DeferredTarget::Label(label) => label.clone(),
+                DeferredTarget::Constant(constant) => sink.get_label_for_constant(constant.clone()),
+            };
+            sink.use_label_at_offset(offset, target);
 
             // N.B.: some instructions (XmmRmRImm format for example)
             // have bytes *after* the RIP-relative offset. The

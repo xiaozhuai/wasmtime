@@ -1,9 +1,38 @@
 use crate::dsl;
 
+impl dsl::Operand {
+    pub fn generate_type(&self) -> Option<String> {
+        use dsl::OperandKind::*;
+        match self.location.kind() {
+            FixedReg(_) => None,
+            Imm(loc) => Some(format!("Imm{}", loc.bits())),
+            Reg(_) => Some(format!("Gpr<R::{}Gpr>", self.mutability.generate_type())),
+            RegMem(_) => {
+                Some(format!("GprMem<R::{}Gpr, R::ReadGpr>", self.mutability.generate_type()))
+            }
+        }
+    }
+
+    pub fn generate_mut_ty(&self, read_ty: &str, read_write_ty: &str) -> Option<String> {
+        use dsl::Mutability::*;
+        use dsl::OperandKind::*;
+        let pick_ty = match self.mutability {
+            Read => read_ty,
+            ReadWrite => read_write_ty,
+        };
+        match self.location.kind() {
+            FixedReg(_) => None,
+            Imm(loc) => Some(format!("Imm{}", loc.bits())),
+            Reg(_) => Some(format!("Gpr<{pick_ty}>")),
+            RegMem(_) => Some(format!("GprMem<{pick_ty}, {read_ty}>")),
+        }
+    }
+}
+
 impl dsl::Location {
     /// `<operand type>`, if the operand has a type (i.e., not fixed registers).
     #[must_use]
-    pub fn generate_type(&self, generic: Option<&str>) -> Option<String> {
+    pub fn generate_type(&self, generic: Option<String>) -> Option<String> {
         use dsl::Location::*;
         let generic = match generic {
             Some(ty) => format!("<{ty}>"),
@@ -69,6 +98,14 @@ impl dsl::Mutability {
         match self {
             dsl::Mutability::Read => "read",
             dsl::Mutability::ReadWrite => "read_write",
+        }
+    }
+
+    #[must_use]
+    pub fn generate_type(&self) -> &str {
+        match self {
+            dsl::Mutability::Read => "Read",
+            dsl::Mutability::ReadWrite => "ReadWrite",
         }
     }
 }

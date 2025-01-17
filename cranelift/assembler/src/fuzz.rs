@@ -1,6 +1,6 @@
 //! Fuzzing utilities.
 
-use crate::{AsReg, Inst};
+use crate::{AsReg, Inst, Registers};
 use arbitrary::Arbitrary;
 use capstone::arch::{BuildsCapstone, BuildsCapstoneSyntax};
 
@@ -12,7 +12,7 @@ use capstone::arch::{BuildsCapstone, BuildsCapstoneSyntax};
 /// This function panics to express failure as expected by the `arbitrary`
 /// fuzzer infrastructure. It may fail during assembly, disassembly, or when
 /// comparing the disassembled strings.
-pub fn roundtrip(inst: &Inst<FuzzReg>) {
+pub fn roundtrip(inst: &Inst<FuzzRegs>) {
     // Check that we can actually assemble this instruction.
     let assembled = assemble(inst);
     let expected = disassemble(&assembled);
@@ -32,7 +32,7 @@ pub fn roundtrip(inst: &Inst<FuzzReg>) {
 ///
 /// This will skip any traps or label registrations, but this is fine for the
 /// single-instruction disassembly we're doing here.
-fn assemble(insn: &Inst<FuzzReg>) -> Vec<u8> {
+fn assemble(insn: &Inst<FuzzRegs>) -> Vec<u8> {
     let mut buffer = Vec::new();
     let offsets: Vec<i32> = Vec::new();
     insn.encode(&mut buffer, &offsets);
@@ -66,6 +66,13 @@ fn pretty_print_hexadecimal(hex: &[u8]) -> String {
     s
 }
 
+#[derive(Arbitrary, Debug)]
+pub struct FuzzRegs;
+impl Registers for FuzzRegs {
+    type ReadGpr = FuzzReg;
+    type ReadWriteGpr = FuzzReg;
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct FuzzReg(u8);
 
@@ -94,7 +101,7 @@ mod test {
     fn smoke() {
         let count = AtomicUsize::new(0);
         arbtest(|u| {
-            let inst: Inst<FuzzReg> = u.arbitrary()?;
+            let inst: Inst<FuzzRegs> = u.arbitrary()?;
             roundtrip(&inst);
             println!("#{}: {inst}", count.fetch_add(1, Ordering::SeqCst));
             Ok(())

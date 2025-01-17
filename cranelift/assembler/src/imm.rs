@@ -49,6 +49,10 @@ impl Imm8 {
 pub struct Imm16(u16);
 
 impl Imm16 {
+    pub fn new(value: u16) -> Self {
+        Self(value)
+    }
+
     #[must_use]
     pub fn value(&self) -> u16 {
         self.0
@@ -70,6 +74,10 @@ impl Imm16 {
 pub struct Imm32(u32);
 
 impl Imm32 {
+    pub fn new(value: u32) -> Self {
+        Self(value)
+    }
+
     #[must_use]
     pub fn value(&self) -> u32 {
         self.0
@@ -99,9 +107,19 @@ pub enum Extension {
 pub struct Simm32(i32);
 
 impl Simm32 {
+    pub fn new(value: i32) -> Self {
+        Self(value)
+    }
+
     #[must_use]
     pub fn value(self) -> i32 {
         self.0
+    }
+}
+
+impl From<i32> for Simm32 {
+    fn from(value: i32) -> Self {
+        Self(value)
     }
 }
 

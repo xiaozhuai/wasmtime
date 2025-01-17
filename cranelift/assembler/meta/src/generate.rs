@@ -35,7 +35,7 @@ pub fn isle_macro(f: &mut Formatter, insts: &[dsl::Inst]) {
         fmtln!(f, "() => {{");
         f.indent(|f| {
             for inst in insts {
-                inst.generate_isle_macro(f, "PairedGpr");
+                inst.generate_isle_macro(f, "Gpr", "PairedGpr");
             }
         });
         fmtln!(f, "}};");
@@ -49,8 +49,10 @@ pub fn isle_definitions(f: &mut Formatter, insts: &[dsl::Inst]) {
     f.line("(type AssemblerImm8 extern (enum))", None);
     f.line("(type AssemblerImm16 extern (enum))", None);
     f.line("(type AssemblerImm32 extern (enum))", None);
-    f.line("(type AssemblerGpr extern (enum))", None);
-    f.line("(type AssemblerGprMem extern (enum))", None);
+    f.line("(type AssemblerReadGpr extern (enum))", None);
+    f.line("(type AssemblerReadWriteGpr extern (enum))", None);
+    f.line("(type AssemblerReadGprMem extern (enum))", None);
+    f.line("(type AssemblerReadWriteGprMem extern (enum))", None);
     f.line("(type AssemblerInst extern (enum))", None);
     f.empty_line();
     for inst in insts {
@@ -62,7 +64,7 @@ pub fn isle_definitions(f: &mut Formatter, insts: &[dsl::Inst]) {
 /// `enum Inst { ... }`
 fn generate_inst_enum(f: &mut Formatter, insts: &[dsl::Inst]) {
     generate_derive(f);
-    fmtln!(f, "pub enum Inst<R: AsReg> {{");
+    fmtln!(f, "pub enum Inst<R: Registers> {{");
     f.indent_push();
     for inst in insts {
         inst.generate_enum_variant(f);
@@ -78,7 +80,7 @@ fn generate_derive(f: &mut Formatter) {
 
 /// `impl std::fmt::Display for Inst { ... }`
 fn generate_inst_display_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    fmtln!(f, "impl<R: AsReg> std::fmt::Display for Inst<R> {{");
+    fmtln!(f, "impl<R: Registers> std::fmt::Display for Inst<R> {{");
     f.indent(|f| {
         fmtln!(f, "fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{");
         f.indent(|f| {
@@ -97,7 +99,7 @@ fn generate_inst_display_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
 
 /// `impl Inst { fn encode... }`
 fn generate_inst_encode_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    fmtln!(f, "impl<R: AsReg> Inst<R> {{");
+    fmtln!(f, "impl<R: Registers> Inst<R> {{");
     f.indent(|f| {
         fmtln!(f, "pub fn encode(&self, b: &mut impl CodeSink, o: &impl KnownOffsetTable) {{");
         f.indent(|f| {
@@ -116,7 +118,7 @@ fn generate_inst_encode_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
 
 /// `impl Inst { fn visit_operands... }`
 fn generate_inst_visit_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
-    fmtln!(f, "impl<R: AsReg> Inst<R> {{");
+    fmtln!(f, "impl<R: Registers> Inst<R> {{");
     f.indent(|f| {
         fmtln!(f, "pub fn visit_operands(&mut self, v: &mut impl OperandVisitor<R>) {{");
         f.indent(|f| {

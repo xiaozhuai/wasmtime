@@ -842,14 +842,6 @@
 (extern constructor box_synthetic_amode box_synthetic_amode)
 (convert SyntheticAmode BoxSyntheticAmode box_synthetic_amode)
 
-(decl pure to_assembler_imm8 (GprMemImm) AssemblerImm8)
-(extern constructor to_assembler_imm8 to_assembler_imm8)
-(convert GprMemImm AssemblerImm8 to_assembler_imm8)
-
-(decl pure from_assembler_imm8 (AssemblerImm8) GprMemImm)
-(extern constructor from_assembler_imm8 from_assembler_imm8)
-(convert AssemblerImm8 GprMemImm from_assembler_imm8)
-
 ;; Get the `OperandSize` for a given `Type`, rounding smaller types up to 32 bits.
 (decl operand_size_of_type_32_64 (Type) OperandSize)
 (extern constructor operand_size_of_type_32_64 operand_size_of_type_32_64)
@@ -2913,42 +2905,55 @@
                  dst_lo)))
 
 ;; Interface with assembler types.
-;; (type AssemblerInst extern (enum))
-;; (type AssemblerImm8 extern (enum))
-;; (type AssemblerGpr extern (enum))
-;; (type AssemblerGprMem extern (enum))
-(type PairedGpr extern (enum
-  (Read (read Gpr))
-  (ReadWrite (read Gpr) (write WritableGpr))
-))
+(decl pure read_assembler_gpr (Gpr) AssemblerReadGpr)
+(extern constructor read_assembler_gpr read_assembler_gpr)
+(convert Gpr AssemblerReadGpr read_assembler_gpr)
 
-(decl pure to_paired_gpr (GprMemImm) PairedGpr)
-(extern constructor to_paired_gpr to_paired_gpr)
-(convert GprMemImm PairedGpr to_paired_gpr)
+(decl pure read_write_assembler_gpr (Gpr) AssemblerReadWriteGpr)
+(extern constructor read_write_assembler_gpr read_write_assembler_gpr)
+(convert Gpr AssemblerReadWriteGpr read_write_assembler_gpr)
 
-(decl pure write_assembler_gpr (Gpr) AssemblerGpr)
-(extern constructor write_assembler_gpr write_assembler_gpr)
+(decl pure gpr_to_assembler_read_write_gpr_mem (Gpr) AssemblerReadWriteGprMem)
+(extern constructor gpr_to_assembler_read_write_gpr_mem gpr_to_assembler_read_write_gpr_mem)
+(convert Gpr AssemblerReadWriteGprMem gpr_to_assembler_read_write_gpr_mem)
 
-(decl pure read_assembler_gpr_mem (GprMemImm) AssemblerGprMem)
+(decl pure read_assembler_gpr_mem (GprMemImm) AssemblerReadGprMem)
 (extern constructor read_assembler_gpr_mem read_assembler_gpr_mem)
+(convert GprMemImm AssemblerReadGprMem read_assembler_gpr_mem)
 
-(decl pure to_writeable_gpr (AssemblerGpr) WritableGpr)
+(decl pure read_write_assembler_gpr_mem (GprMemImm) AssemblerReadWriteGprMem)
+(extern constructor read_write_assembler_gpr_mem read_write_assembler_gpr_mem)
+(convert GprMemImm AssemblerReadWriteGprMem read_write_assembler_gpr_mem)
+
+(decl pure from_assembler_read_write_gpr_mem (AssemblerReadWriteGprMem) Gpr)
+(extern constructor from_assembler_read_write_gpr_mem from_assembler_read_write_gpr_mem)
+(convert AssemblerReadWriteGprMem Gpr from_assembler_read_write_gpr_mem)
+
+(decl pure to_writeable_gpr (AssemblerReadWriteGpr) WritableGpr)
 (extern constructor to_writeable_gpr to_writeable_gpr)
+(convert AssemblerReadWriteGpr WritableGpr to_writeable_gpr)
 
-;; Helper for emitting `and` instructions.
-(decl x64_and (Type Gpr GprMemImm) Gpr)
-(rule 3 (x64_and $I8 src1 (is_imm src2)) (x64_andb_mi src1 src2))
-(rule 2 (x64_and $I64 src1 (is_gpr src2)) (x64_andq_rm src1 src2))
-(rule 1 (x64_and $I32 src1 (is_mem src2)) (x64_andl_rm src1 src2))
-;; (rule 1 (x64_and $I16 src1 (is_imm src2)) (x64_andw_mi src1 src2))
-;; (rule 1 (x64_and $I32 src1 (is_imm src2)) (x64_andl_mi src1 src2))
-;; (rule 1 (x64_and $I64 src1 (is_imm src2)) (x64_andq_mi src1 src2))
-(rule 0 (x64_and ty src1 src2)
-      (alu_rmi_r ty
-                 (AluRmiROpcode.And)
-                 src1
-                 src2))
+(decl pure to_gpr (AssemblerReadWriteGpr) Gpr)
+(extern constructor to_gpr to_gpr)
+(convert AssemblerReadWriteGpr Gpr to_gpr)
 
+(decl pure to_assembler_imm8 (GprMemImm) AssemblerImm8)
+(extern constructor to_assembler_imm8 to_assembler_imm8)
+(convert GprMemImm AssemblerImm8 to_assembler_imm8)
+
+(decl pure from_assembler_imm8 (AssemblerImm8) GprMemImm)
+(extern constructor from_assembler_imm8 from_assembler_imm8)
+(convert AssemblerImm8 GprMemImm from_assembler_imm8)
+
+(decl pure to_assembler_imm16 (GprMemImm) AssemblerImm16)
+(extern constructor to_assembler_imm16 to_assembler_imm16)
+(convert GprMemImm AssemblerImm16 to_assembler_imm16)
+
+(decl pure to_assembler_imm32 (GprMemImm) AssemblerImm32)
+(extern constructor to_assembler_imm32 to_assembler_imm32)
+(convert GprMemImm AssemblerImm32 to_assembler_imm32)
+
+;; Helpers for matching operands; could be extractors (TODO?).
 (extern extractor is_imm is_imm)
 (decl is_imm (GprMemImm) GprMemImm)
 (extern extractor is_gpr is_gpr)
@@ -2956,37 +2961,27 @@
 (extern extractor is_mem is_mem)
 (decl is_mem (GprMemImm) GprMemImm)
 
-(decl x64_andb_mi (Gpr AssemblerImm8) WritableGpr)
-(rule (x64_andb_mi rm8 imm8)
-      (let ((dst WritableGpr (temp_writable_gpr))
-            (pair PairedGpr (PairedGpr.ReadWrite rm8 dst))
-            (_ Unit (emit (MInst.External (assemble_andb_mi pair imm8)))))
-        dst))
-(decl assemble_andb_mi (PairedGpr AssemblerImm8) AssemblerInst)
-(extern constructor assemble_andb_mi assemble_andb_mi)
-
-(decl x64_andq_rm (Gpr PairedGpr) WritableGpr)
-(rule (x64_andq_rm r8 rm8)
-      (let ((dst WritableGpr (temp_writable_gpr))
-            (r8_ PairedGpr (PairedGpr.ReadWrite r8 dst))
-            ;; (rm8_ AssemblerGpr (AssemblerGpr.Read rm8))
-            (_ Unit (emit (MInst.External (assemble_andq_rm r8_ rm8)))))
-        dst))
-(decl assemble_andq_rm (PairedGpr PairedGpr) AssemblerInst)
-(extern constructor assemble_andq_rm assemble_andq_rm)
-
-(decl x64_andl_rm (Gpr GprMemImm) WritableGpr)
-(rule (x64_andl_rm r8 rm8)
-      (let ((r8_ AssemblerGpr (write_assembler_gpr r8))
-            (rm8_ AssemblerGprMem (read_assembler_gpr_mem rm8))
-            (_ Unit (emit (MInst.External (assemble_andl_rm r8_ rm8_)))))
-        (to_writeable_gpr r8_)))
-(decl assemble_andl_rm (AssemblerGpr AssemblerGprMem) AssemblerInst)
-(extern constructor assemble_andl_rm assemble_andl_rm)
-
-
-
-
+;; Helper for emitting `and` instructions.
+(decl x64_and (Type Gpr GprMemImm) Gpr)
+;; New assembler emitter:
+(rule 12 (x64_and $I8 src1 (is_imm src2)) (x64_andb_mi src1 src2))
+(rule 11 (x64_and $I16 src1 (is_imm src2)) (x64_andw_mi src1 src2))
+(rule 10 (x64_and $I32 src1 (is_imm src2)) (x64_andl_mi src1 src2))
+(rule 9 (x64_and $I64 src1 (is_imm src2)) (x64_andq_mi_sxlq src1 src2))
+(rule 8 (x64_and $I8 src1 (is_gpr src2)) (x64_andb_rm src1 src2))
+(rule 7 (x64_and $I16 src1 (is_gpr src2)) (x64_andw_rm src1 src2))
+(rule 6 (x64_and $I32 src1 (is_gpr src2)) (x64_andl_rm src1 src2))
+(rule 5 (x64_and $I64 src1 (is_gpr src2)) (x64_andq_rm src1 src2))
+(rule 4 (x64_and $I8 src1 (is_mem src2)) (x64_andb_rm src1 src2))
+(rule 3 (x64_and $I16 src1 (is_mem src2)) (x64_andw_rm src1 src2))
+(rule 2 (x64_and $I32 src1 (is_mem src2)) (x64_andl_rm src1 src2))
+(rule 1 (x64_and $I64 src1 (is_mem src2)) (x64_andq_rm src1 src2))
+;; Original cranelift-codegen emitter:
+(rule 0 (x64_and ty src1 src2)
+      (alu_rmi_r ty
+                 (AluRmiROpcode.And)
+                 src1
+                 src2))
 
 (decl x64_and_with_flags_paired (Type Gpr GprMemImm) ProducesFlags)
 (rule (x64_and_with_flags_paired ty src1 src2)
