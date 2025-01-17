@@ -47,18 +47,21 @@ pub struct RexFlags(u8);
 impl RexFlags {
     /// By default, set the W field, and don't always emit.
     #[inline]
+    #[must_use]
     pub fn set_w() -> Self {
         Self(0)
     }
 
     /// Creates a new REX prefix for which the REX.W bit will be cleared.
     #[inline]
+    #[must_use]
     pub fn clear_w() -> Self {
         Self(1)
     }
 
     /// True if 64-bit operands are used.
     #[inline]
+    #[must_use]
     pub fn must_clear_w(self) -> bool {
         (self.0 & 1) != 0
     }
@@ -72,6 +75,7 @@ impl RexFlags {
 
     /// True if the REX prefix must always be emitted.
     #[inline]
+    #[must_use]
     pub fn must_always_emit(self) -> bool {
         (self.0 & 2) != 0
     }

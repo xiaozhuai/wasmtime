@@ -30,7 +30,7 @@ fn emit_modrm(buffer: &mut impl CodeSink, enc_reg_g: u8, rm_e: u8) {
 /// TODO
 pub fn generated_files() -> Vec<std::path::PathBuf> {
     env!("ASSEMBLER_BUILT_FILES")
-        .split(":")
+        .split(':')
         .map(std::path::PathBuf::from)
         .collect()
 }

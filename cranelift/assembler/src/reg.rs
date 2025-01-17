@@ -122,7 +122,7 @@ pub mod enc {
                 Doubleword => "%r15d",
                 Quadword => "%r15",
             },
-            _ => panic!("%invalid{}", enc), // TODO: print instead?
+            _ => panic!("%invalid{enc}"), // TODO: print instead?
         }
     }
 }
@@ -172,10 +172,12 @@ impl<R: AsReg> Gpr<R> {
         Self(reg)
     }
 
-    // TODO: impl Deref instead?
+    /// # Panics
+    ///
+    /// Panics if the register is not a valid x64 register.
     pub fn enc(&self) -> u8 {
         let enc = self.0.enc();
-        assert!(enc < 16, "invalid register: {}", enc);
+        assert!(enc < 16, "invalid register: {enc}");
         enc
     }
 
@@ -189,42 +191,19 @@ impl<R: AsReg> Gpr<R> {
             rex.always_emit();
         }
     }
-
-    // pub fn read<T: AsReg>(&mut self, visitor: &mut impl OperandVisitor<T>) {
-    //     visitor.read(&mut self.0 );
-    // }
-
-    // pub fn read_write(&mut self, visitor: &mut impl OperandVisitor<R>) {
-    //     visitor.read_write(&mut self.0);
-    // }
-
-    /// Allow the register allocator to modify this register in place.
-    pub fn as_mut(&mut self) -> &mut R {
-        &mut self.0
-    }
-
-    /// Allow the register allocator to modify this register in place.
-    pub fn as_ref(&self) -> &R {
-        &self.0
-    }
-
-    // /// Allow external users to inspect this register.
-    // pub fn as_u32(&self) -> u32 {
-    //     self.0
-    // }
 }
 
-// impl<R: AsReg> Gpr<R> {
-//     pub fn read<U>(&mut self, visitor: &mut impl OperandVisitor<R, U>) {
-//         visitor.read(&mut self.0);
-//     }
-// }
+impl<R: AsReg> AsRef<R> for Gpr<R> {
+    fn as_ref(&self) -> &R {
+        &self.0
+    }
+}
 
-// impl<RW: AsReg> Gpr<RW> {
-//     pub fn read_write<U>(&mut self, visitor: &mut impl OperandVisitor<U, RW>) {
-//         visitor.read_write(&mut self.0);
-//     }
-// }
+impl<R: AsReg> AsMut<R> for Gpr<R> {
+    fn as_mut(&mut self) -> &mut R {
+        &mut self.0
+    }
+}
 
 impl<'a, R: AsReg> Arbitrary<'a> for Gpr<R> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
@@ -248,24 +227,21 @@ impl<R: AsReg> MinusRsp<R> {
     pub fn new(reg: R) -> Self {
         Self(reg)
     }
-    pub fn as_mut(&mut self) -> &mut R {
-        &mut self.0
-    }
+
+    /// # Panics
+    ///
+    /// Panics if the register is `%rsp`.
     pub fn enc(&self) -> u8 {
         assert_ne!(self.0.enc(), enc::RSP, "invalid register: %rsp");
         self.0.enc()
     }
 }
 
-// impl Arbitrary<'_> for MinusRsp<Gpr> {
-//     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-//         let gpr = u.choose(&[
-//             RAX, RCX, RDX, RBX, RBP, RSI, RDI, R8, R9, R10,
-//             R11, R12, R13, R14, R15,
-//         ])?;
-//         Ok(Self(Gpr(u32::from(*gpr))))
-//     }
-// }
+impl<R: AsReg> AsMut<R> for MinusRsp<R> {
+    fn as_mut(&mut self) -> &mut R {
+        &mut self.0
+    }
+}
 
 impl<R: AsReg> Arbitrary<'_> for MinusRsp<R> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {

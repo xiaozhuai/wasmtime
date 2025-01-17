@@ -57,7 +57,7 @@ impl<R: AsReg> Amode<R> {
         }
     }
 
-    pub fn as_mut<'a>(&'a mut self) -> Vec<&'a mut R> {
+    pub fn as_mut(&mut self) -> Vec<&mut R> {
         match self {
             Amode::ImmReg { base, .. } => {
                 vec![base]
@@ -110,6 +110,10 @@ pub enum Scale {
     Eight,
 }
 impl Scale {
+    /// # Panics
+    ///
+    /// Panics if `enc` is not a valid encoding for a scale (0-3).
+    #[must_use]
     pub fn new(enc: u8) -> Self {
         match enc {
             0b00 => Scale::One,

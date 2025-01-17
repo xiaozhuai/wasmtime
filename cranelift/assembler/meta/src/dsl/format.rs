@@ -74,8 +74,9 @@ impl Format {
         self.locations().copied().find(Location::uses_memory)
     }
 
+    #[must_use]
     pub fn uses_arbitrary_register(&self) -> bool {
-        self.locations().any(|l| l.uses_arbitrary_register())
+        self.locations().any(Location::uses_arbitrary_register)
     }
 
     pub fn locations(&self) -> impl Iterator<Item = &Location> + '_ {
@@ -90,10 +91,10 @@ impl Format {
         self.locations().map(Location::kind).collect()
     }
 
-    pub fn operands_with_ty<'a>(
-        &'a self,
+    pub fn operands_with_ty(
+        &self,
         needs_generic: fn(Mutability) -> Option<String>,
-    ) -> impl Iterator<Item = (Location, String)> + 'a {
+    ) -> impl Iterator<Item = (Location, String)> + '_ {
         self.operands.iter().filter_map(move |o| {
             let generic = needs_generic(o.mutability);
             let ty = o.location.generate_type(generic)?;
@@ -194,6 +195,7 @@ impl Location {
         }
     }
 
+    #[must_use]
     pub fn uses_arbitrary_register(&self) -> bool {
         use Location::*;
         match self {
@@ -249,12 +251,13 @@ pub enum OperandKind {
 }
 
 impl OperandKind {
+    #[must_use]
     pub fn location(&self) -> Location {
         match self {
-            OperandKind::FixedReg(location) => *location,
-            OperandKind::Imm(location) => *location,
-            OperandKind::Reg(location) => *location,
-            OperandKind::RegMem(location) => *location,
+            OperandKind::FixedReg(location)
+            | OperandKind::Imm(location)
+            | OperandKind::Reg(location)
+            | OperandKind::RegMem(location) => *location,
         }
     }
 }

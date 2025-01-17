@@ -95,6 +95,7 @@ impl dsl::Inst {
                 .map(|o| o.location.to_string()),
         );
 
+        fmtln!(f, "#[must_use]");
         fmtln!(f, "pub fn {variant_name}<R: Registers>({params}) -> Inst<R> {{");
         f.indent(|f| {
             fmtln!(f, "Inst::{variant_name}({variant_name} {{ {args} }})",);
@@ -156,10 +157,10 @@ impl dsl::Inst {
     /// `fn regalloc(&self) -> String { ... }`
     pub fn generate_regalloc_function(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
-        let extra_generic_bound = if !self.requires_generic() {
-            "<R: Registers>"
-        } else {
+        let extra_generic_bound = if self.requires_generic() {
             ""
+        } else {
+            "<R: Registers>"
         };
         fmtln!(f, "pub fn visit_operands{extra_generic_bound}(&mut self, visitor: &mut impl OperandVisitor<R>) {{");
         f.indent(|f| {
@@ -234,14 +235,13 @@ impl dsl::Inst {
             .filter_map(|o| Some((o.location, o.generate_mut_ty(read_ty, read_write_ty)?)))
             .collect::<Vec<_>>();
         let ret_ty = match self.format.operands.first().unwrap().location.kind() {
-            FixedReg(_) => format!("cranelift_assembler::Gpr<{read_write_ty}>"),
             Imm(_) => unreachable!(),
-            Reg(_) => format!("cranelift_assembler::Gpr<{read_write_ty}>"),
+            Reg(_) | FixedReg(_) => format!("cranelift_assembler::Gpr<{read_write_ty}>"),
             RegMem(_) => format!("cranelift_assembler::GprMem<{read_write_ty}, {read_ty}>"),
         };
         let ret_val = match self.format.operands.first().unwrap().location.kind() {
-            FixedReg(_) => format!("todo!()"),
             Imm(_) => unreachable!(),
+            FixedReg(_) => "todo!()".to_string(),
             Reg(loc) | RegMem(loc) => format!("{loc}.clone()"),
         };
         let params = comma_join(
@@ -256,7 +256,7 @@ impl dsl::Inst {
         f.indent(|f| {
             fmtln!(f, "let inst = cranelift_assembler::build::{struct_name}({args});");
             fmtln!(f, "self.lower_ctx.emit(MInst::External {{ inst }});");
-            fmtln!(f, "{ret_val}")
+            fmtln!(f, "{ret_val}");
         });
         fmtln!(f, "}}");
     }
@@ -272,7 +272,7 @@ impl dsl::Inst {
             .format
             .operands
             .iter()
-            .flat_map(|o| match o.location.kind() {
+            .filter_map(|o| match o.location.kind() {
                 FixedReg(_) => None,
                 Imm(loc) => Some(format!("AssemblerImm{}", loc.bits())),
                 Reg(_) => Some(format!("Assembler{}Gpr", o.mutability.generate_type())),

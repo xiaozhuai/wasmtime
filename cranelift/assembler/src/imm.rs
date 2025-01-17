@@ -24,6 +24,7 @@ macro_rules! maybe_print_hex {
 pub struct Imm8(u8);
 
 impl Imm8 {
+    #[must_use]
     pub fn new(value: u8) -> Self {
         Self(value)
     }
@@ -33,6 +34,7 @@ impl Imm8 {
         self.0
     }
 
+    #[must_use]
     pub fn to_string(&self, extend: Extension) -> String {
         use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
@@ -49,6 +51,7 @@ impl Imm8 {
 pub struct Imm16(u16);
 
 impl Imm16 {
+    #[must_use]
     pub fn new(value: u16) -> Self {
         Self(value)
     }
@@ -58,6 +61,7 @@ impl Imm16 {
         self.0
     }
 
+    #[must_use]
     pub fn to_string(&self, extend: Extension) -> String {
         use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
@@ -74,6 +78,7 @@ impl Imm16 {
 pub struct Imm32(u32);
 
 impl Imm32 {
+    #[must_use]
     pub fn new(value: u32) -> Self {
         Self(value)
     }
@@ -82,6 +87,8 @@ impl Imm32 {
     pub fn value(&self) -> u32 {
         self.0
     }
+
+    #[must_use]
     pub fn to_string(&self, extend: Extension) -> String {
         use Extension::{None, SignExtendLong, SignExtendQuad, SignExtendWord, ZeroExtend};
         match extend {
@@ -107,6 +114,7 @@ pub enum Extension {
 pub struct Simm32(i32);
 
 impl Simm32 {
+    #[must_use]
     pub fn new(value: i32) -> Self {
         Self(value)
     }
@@ -149,6 +157,9 @@ pub struct Simm32PlusKnownOffset {
 }
 
 impl Simm32PlusKnownOffset {
+    /// # Panics
+    ///
+    /// Panics if the sum of the immediate and the known offset value overflows.
     #[must_use]
     pub fn value(&self, offsets: &impl KnownOffsetTable) -> i32 {
         let offset = match self.offset {

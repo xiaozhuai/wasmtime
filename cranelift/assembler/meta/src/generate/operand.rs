@@ -1,6 +1,7 @@
 use crate::dsl;
 
 impl dsl::Operand {
+    #[must_use]
     pub fn generate_type(&self) -> Option<String> {
         use dsl::OperandKind::*;
         match self.location.kind() {
@@ -13,6 +14,7 @@ impl dsl::Operand {
         }
     }
 
+    #[must_use]
     pub fn generate_mut_ty(&self, read_ty: &str, read_write_ty: &str) -> Option<String> {
         use dsl::Mutability::*;
         use dsl::OperandKind::*;
@@ -36,7 +38,7 @@ impl dsl::Location {
         use dsl::Location::*;
         let generic = match generic {
             Some(ty) => format!("<{ty}>"),
-            None => "".into(),
+            None => String::new(),
         };
         match self {
             al | ax | eax | rax => None,
