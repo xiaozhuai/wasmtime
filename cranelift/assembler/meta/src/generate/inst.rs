@@ -78,10 +78,10 @@ impl dsl::Inst {
         fmtln!(f, "Self::{variant_name}(i) => i.visit_operands(v),");
     }
 
-    // `Self::<inst>(i) => i.match_features(f),`
-    pub fn generate_variant_match(&self, f: &mut Formatter) {
+    // `Self::<inst>(i) => i.features(),`
+    pub fn generate_variant_features(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => i.match_features(f),");
+        fmtln!(f, "Self::{variant_name}(i) => i.features(),");
     }
 
     // `fn <inst>(<params>) -> Inst { ... }`
@@ -197,21 +197,17 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn match_features(&self) -> bool { ... }`
+    /// `fn features(&self) -> Vec<Flag> { ... }`
     pub fn generate_match_function(&self, f: &mut Formatter) {
-        let avail_name = if self.features.contains_flag() {
-            "available"
-        } else {
-            "_available"
-        };
-        fmtln!(f, "pub fn match_features(&self, {avail_name}: AvailableFeatures) -> bool {{");
+        fmtln!(f, "pub fn features(&self) -> Vec<Flag> {{");
         f.indent(|f| {
-            let mut terms = vec![];
-            let expr = self.features.generate(&mut terms, false);
-            for (term, flag) in terms {
-                fmtln!(f, "let {term} = available.index(Flag::{});", flag.name());
-            }
-            fmtln!(f, "{expr}")
+            let flags = self
+                .features
+                .flags
+                .iter()
+                .map(|f| format!("Flag::{}", f.name()))
+                .collect::<Vec<_>>();
+            fmtln!(f, "vec![{}]", flags.join(", "));
         });
         fmtln!(f, "}}");
     }

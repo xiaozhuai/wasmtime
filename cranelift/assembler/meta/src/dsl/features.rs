@@ -1,34 +1,14 @@
 use core::fmt;
-use std::ops::{BitAnd, BitOr};
+use std::ops::BitOr;
 
 #[derive(PartialEq)]
-pub enum Features {
-    None,
-    Flag(Flag),
-    And(Box<Features>, Box<Features>),
-    Or(Box<Features>, Box<Features>),
-}
-
-impl Features {
-    pub fn contains_flag(&self) -> bool {
-        use Features::{And, Flag, None, Or};
-        match self {
-            None => false,
-            Flag(_) => true,
-            And(lhs, rhs) | Or(lhs, rhs) => lhs.contains_flag() || rhs.contains_flag(),
-        }
-    }
+pub struct Features {
+    pub flags: Vec<Flag>,
 }
 
 impl fmt::Display for Features {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Features::{And, Flag, None, Or};
-        match self {
-            None => write!(f, ""),
-            Flag(flag) => write!(f, "{flag}"),
-            And(left, right) => write!(f, "{left} & {right}"),
-            Or(left, right) => write!(f, "{left} | {right}"),
-        }
+        write!(f, "{}", self.flags.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(" | "))
     }
 }
 
@@ -50,20 +30,19 @@ impl fmt::Display for Flag {
 
 impl From<Flag> for Features {
     fn from(flag: Flag) -> Self {
-        Features::Flag(flag)
+        Features { flags: vec![flag] }
     }
 }
 
-impl BitAnd for Flag {
-    type Output = Features;
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Features::And(Box::new(self.into()), Box::new(rhs.into()))
+impl From<Option<Flag>> for Features {
+    fn from(flag: Option<Flag>) -> Self {
+        Features { flags: flag.into_iter().collect() }
     }
 }
 
 impl BitOr for Flag {
     type Output = Features;
     fn bitor(self, rhs: Self) -> Self::Output {
-        Features::Or(Box::new(self.into()), Box::new(rhs.into()))
+        Features { flags: vec![self.into(), rhs.into()] }
     }
 }

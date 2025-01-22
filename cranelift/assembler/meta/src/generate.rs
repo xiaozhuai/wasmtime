@@ -16,7 +16,7 @@ pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
     generate_inst_display_impl(f, insts);
     generate_inst_encode_impl(f, insts);
     generate_inst_visit_impl(f, insts);
-    generate_inst_match_impl(f, insts);
+    generate_inst_features_impl(f, insts);
     generate_inst_constructor_impl(f, insts);
 
     // Generate per-instruction structs.
@@ -139,16 +139,16 @@ fn generate_inst_visit_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
     fmtln!(f, "}}");
 }
 
-/// `impl Inst { fn match_features... }`
-fn generate_inst_match_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
+/// `impl Inst { fn features... }`
+fn generate_inst_features_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
     fmtln!(f, "impl<R: Registers> Inst<R> {{");
     f.indent(|f| {
-        fmtln!(f, "pub fn match_features(&self, f: AvailableFeatures) -> bool {{");
+        fmtln!(f, "pub fn features(&self) -> Vec<Flag> {{");
         f.indent(|f| {
             fmtln!(f, "match self {{");
             f.indent_push();
             for inst in insts {
-                inst.generate_variant_match(f);
+                inst.generate_variant_features(f);
             }
             f.indent_pop();
             fmtln!(f, "}}");

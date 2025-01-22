@@ -204,17 +204,8 @@ pub(crate) fn emit(
             "Cannot emit inst '{inst:?}' for target; failed to match ISA requirements: {isa_requirements:?}"
         )
     }
-
-    fn convert(flags: &x64_settings::Flags) -> cranelift_assembler::AvailableFeatures {
-        cranelift_assembler::AvailableFeatures::new(&[])
-    }
-
     match inst {
         Inst::External { inst } => {
-            let available = convert(&info.isa_flags);
-            if !inst.match_features(available) {
-                panic!("cannot emit inst '{inst:?}' for target")
-            }
             inst.encode(sink, &[]);
         }
         Inst::AluRmiR {

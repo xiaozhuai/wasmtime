@@ -1,45 +1,6 @@
 use super::{fmtln, Formatter};
 use crate::{dsl, generate::generate_derive};
 
-impl dsl::Features {
-    /// This generator will emit two separate things:
-    /// - a list of (`var`, `expr`) tuples to materialize the terms
-    /// - an expression string containing the boolean logic matching the feature tree
-    pub fn generate(&self, terms: &mut Vec<(String, dsl::Flag)>, parens: bool) -> String {
-        use dsl::Features::*;
-        let mut expr = vec![];
-        match self {
-            None => {
-                expr.push("true".to_string());
-            }
-            Flag(flag) => {
-                let t = format!("f{}", terms.len());
-                terms.push((t.clone(), *flag));
-                expr.push(t);
-            }
-            And(lhs, rhs) => {
-                let lhs = lhs.generate(terms, true);
-                let rhs = rhs.generate(terms, true);
-                expr.push(if parens {
-                    format!("({lhs} && {rhs})")
-                } else {
-                    format!("{lhs} && {rhs}")
-                });
-            }
-            Or(lhs, rhs) => {
-                let lhs = lhs.generate(terms, true);
-                let rhs = rhs.generate(terms, true);
-                expr.push(if parens {
-                    format!("({lhs} || {rhs})")
-                } else {
-                    format!("{lhs} || {rhs}")
-                });
-            }
-        }
-        expr.join(" ")
-    }
-}
-
 impl dsl::Flag {
     pub fn name(&self) -> &str {
         use dsl::Flag::*;

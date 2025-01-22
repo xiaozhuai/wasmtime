@@ -191,9 +191,14 @@ impl Inst {
             Inst::MulX { .. } => smallvec![InstructionSet::BMI2],
 
             Inst::External { inst } => {
-                // TODO: pass on the available ISA sets from the external
-                // instruction.
-                smallvec![]
+                use cranelift_assembler::Flag::*;
+                let features = smallvec![];
+                for f in inst.features() {
+                    match f {
+                        _64b | compat => {}
+                    }
+                }
+                features
             }
         }
     }

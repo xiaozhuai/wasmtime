@@ -42,7 +42,7 @@ impl core::fmt::Display for Inst {
         let Inst { name, format, encoding, features } = self;
 
         write!(f, "{name}: {format} => {encoding}")?;
-        if features != &Features::None {
+        if !features.flags.is_empty() {
             write!(f, " [{features}]")?;
         }
         Ok(())

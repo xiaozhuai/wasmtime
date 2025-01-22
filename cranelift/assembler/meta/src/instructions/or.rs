@@ -1,6 +1,4 @@
-use crate::dsl::{
-    fmt, inst, r, rex, rw, sxl, sxq, Features::*, Inst, LegacyPrefixes::*, Location::*,
-};
+use crate::dsl::{fmt, inst, r, rex, rw, sxl, sxq, Inst, LegacyPrefixes::*, Location::*};
 
 pub fn list() -> Vec<Inst> {
     vec![
