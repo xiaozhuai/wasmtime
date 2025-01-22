@@ -1,6 +1,7 @@
 #![allow(non_camel_case_types)]
 
 mod alloc;
+mod feat;
 pub mod fuzz;
 pub mod gen;
 mod imm;
@@ -10,6 +11,7 @@ mod rex;
 mod sink;
 
 pub use alloc::OperandVisitor;
+pub use feat::AvailableFeatures;
 pub use imm::{Extension, Imm16, Imm32, Imm8, Simm32, Simm32PlusKnownOffset};
 pub use mem::{Amode, DeferredTarget, GprMem, Scale};
 pub use reg::{AsReg, Gpr, MinusRsp, Registers, Size};

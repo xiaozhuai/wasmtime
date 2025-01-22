@@ -73,9 +73,15 @@ impl dsl::Inst {
     }
 
     // `Self::<inst>(i) => i.visit_operands(v),`
-    pub fn generate_variant_regalloc(&self, f: &mut Formatter) {
+    pub fn generate_variant_visit(&self, f: &mut Formatter) {
         let variant_name = self.struct_name();
         fmtln!(f, "Self::{variant_name}(i) => i.visit_operands(v),");
+    }
+
+    // `Self::<inst>(i) => i.match_features(f),`
+    pub fn generate_variant_match(&self, f: &mut Formatter) {
+        let variant_name = self.struct_name();
+        fmtln!(f, "Self::{variant_name}(i) => i.match_features(f),");
     }
 
     // `fn <inst>(<params>) -> Inst { ... }`
@@ -112,7 +118,9 @@ impl dsl::Inst {
         f.indent_push();
         self.generate_encode_function(f);
         f.empty_line();
-        self.generate_regalloc_function(f);
+        self.generate_visit_function(f);
+        f.empty_line();
+        self.generate_match_function(f);
         f.indent_pop();
         fmtln!(f, "}}");
     }
@@ -124,10 +132,7 @@ impl dsl::Inst {
         } else {
             "_"
         };
-        fmtln!(
-            f,
-            "pub fn encode(&self, buf: &mut impl CodeSink, {off}: &impl KnownOffsetTable) {{"
-        );
+        fmtln!(f, "pub fn encode(&self, buf: &mut impl CodeSink, {off}: &impl KnownOffsetTable) {{");
         f.indent_push();
 
         // Emit trap.
@@ -154,14 +159,10 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn regalloc(&self) -> String { ... }`
-    pub fn generate_regalloc_function(&self, f: &mut Formatter) {
+    /// `fn visit_operands(&self) -> String { ... }`
+    pub fn generate_visit_function(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
-        let extra_generic_bound = if self.requires_generic() {
-            ""
-        } else {
-            "<R: Registers>"
-        };
+        let extra_generic_bound = if self.requires_generic() { "" } else { "<R: Registers>" };
         fmtln!(f, "pub fn visit_operands{extra_generic_bound}(&mut self, visitor: &mut impl OperandVisitor<R>) {{");
         f.indent(|f| {
             for o in &self.format.operands {
@@ -186,15 +187,31 @@ impl dsl::Inst {
                         fmtln!(f, "match &mut self.{rm} {{");
                         f.indent(|f| {
                             fmtln!(f, "GprMem::Gpr(r) => visitor.{call}(r),");
-                            fmtln!(
-                                f,
-                                "GprMem::Mem(m) => m.as_mut().iter_mut().for_each(|r| visitor.read(r)),"
-                            );
+                            fmtln!(f, "GprMem::Mem(m) => m.as_mut().iter_mut().for_each(|r| visitor.read(r)),");
                         });
                         fmtln!(f, "}}");
                     }
                 }
             }
+        });
+        fmtln!(f, "}}");
+    }
+
+    /// `fn match_features(&self) -> bool { ... }`
+    pub fn generate_match_function(&self, f: &mut Formatter) {
+        let avail_name = if self.features.contains_flag() {
+            "available"
+        } else {
+            "_available"
+        };
+        fmtln!(f, "pub fn match_features(&self, {avail_name}: AvailableFeatures) -> bool {{");
+        f.indent(|f| {
+            let mut terms = vec![];
+            let expr = self.features.generate(&mut terms, false);
+            for (term, flag) in terms {
+                fmtln!(f, "let {term} = available.index(Flag::{});", flag.name());
+            }
+            fmtln!(f, "{expr}")
         });
         fmtln!(f, "}}");
     }

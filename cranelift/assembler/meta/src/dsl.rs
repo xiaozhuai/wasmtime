@@ -9,7 +9,7 @@ mod features;
 pub mod format;
 
 pub use encoding::{rex, vex, Encoding, LegacyPrefixes, Rex};
-pub use features::Features;
+pub use features::{Features, Flag};
 pub use format::{fmt, r, rw, sxl, sxq, sxw};
 pub use format::{Extension, Format, Location, Mutability, Operand, OperandKind};
 
@@ -18,11 +18,16 @@ pub fn inst(
     name: impl Into<String>,
     format: Format,
     encoding: impl Into<Encoding>,
-    features: Features,
+    features: impl Into<Features>,
 ) -> Inst {
     let encoding = encoding.into();
     encoding.validate(&format.operands);
-    Inst { name: name.into(), format, encoding, features }
+    Inst {
+        name: name.into(),
+        format,
+        encoding,
+        features: features.into(),
+    }
 }
 
 pub struct Inst {

@@ -1,3 +1,4 @@
+mod features;
 mod format;
 mod formatter;
 mod inst;
@@ -15,6 +16,7 @@ pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
     generate_inst_display_impl(f, insts);
     generate_inst_encode_impl(f, insts);
     generate_inst_visit_impl(f, insts);
+    generate_inst_match_impl(f, insts);
     generate_inst_constructor_impl(f, insts);
 
     // Generate per-instruction structs.
@@ -25,6 +27,8 @@ pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
         inst.generate_display_impl(f);
         f.empty_line();
     }
+
+    dsl::Flag::generate_enum(f);
 }
 
 /// Generate the `isle_assembler_methods!` macro.
@@ -125,7 +129,26 @@ fn generate_inst_visit_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
             fmtln!(f, "match self {{");
             f.indent_push();
             for inst in insts {
-                inst.generate_variant_regalloc(f);
+                inst.generate_variant_visit(f);
+            }
+            f.indent_pop();
+            fmtln!(f, "}}");
+        });
+        fmtln!(f, "}}");
+    });
+    fmtln!(f, "}}");
+}
+
+/// `impl Inst { fn match_features... }`
+fn generate_inst_match_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
+    fmtln!(f, "impl<R: Registers> Inst<R> {{");
+    f.indent(|f| {
+        fmtln!(f, "pub fn match_features(&self, f: AvailableFeatures) -> bool {{");
+        f.indent(|f| {
+            fmtln!(f, "match self {{");
+            f.indent_push();
+            for inst in insts {
+                inst.generate_variant_match(f);
             }
             f.indent_pop();
             fmtln!(f, "}}");
