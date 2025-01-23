@@ -6,7 +6,7 @@ use crate::{dsl, generate::generate_derive};
 impl dsl::Feature {
     /// `pub enum Feature { ... }`
     ///
-    /// This function recreates itself in the generated code.
+    /// This function recreates the `Feature` struct itself in the generated code.
     pub fn generate_enum(f: &mut Formatter) {
         use dsl::Feature::*;
         generate_derive(f);

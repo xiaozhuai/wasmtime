@@ -42,11 +42,6 @@ pub fn maybe_file_loc(fmtstr: &str, file: &'static str, line: u32) -> Option<Fil
 }
 
 /// Record a source location; preferably, use [`fmtln`] directly.
-///
-/// ```
-/// # use cranelift_assembler_meta::FileLocation;
-/// FileLocation::new(file!(), line!());
-/// ```
 pub struct FileLocation {
     file: &'static str,
     line: u32,

@@ -191,7 +191,7 @@ impl Inst {
             Inst::MulX { .. } => smallvec![InstructionSet::BMI2],
 
             Inst::External { inst } => {
-                use cranelift_assembler::Flag::*;
+                use cranelift_assembler::Feature::*;
                 let features = smallvec![];
                 for f in inst.features() {
                     match f {

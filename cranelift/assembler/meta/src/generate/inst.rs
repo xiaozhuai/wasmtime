@@ -45,6 +45,7 @@ impl dsl::Inst {
         }
     }
 
+    /// `impl...`
     fn generate_impl_block_start(&self) -> &str {
         if self.requires_generic() {
             "impl<R: Registers>"
@@ -120,13 +121,13 @@ impl dsl::Inst {
         f.empty_line();
         self.generate_visit_function(f);
         f.empty_line();
-        self.generate_match_function(f);
+        self.generate_features_function(f);
         f.indent_pop();
         fmtln!(f, "}}");
     }
 
-    /// `fn encode(&self, buf: &mut impl CodeSink, off: &impl KnownOffsetTable) { ... }`
-    pub fn generate_encode_function(&self, f: &mut Formatter) {
+    /// `fn encode(&self, ...) { ... }`
+    fn generate_encode_function(&self, f: &mut Formatter) {
         let off = if self.format.uses_memory().is_some() {
             "off"
         } else {
@@ -159,8 +160,8 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn visit_operands(&self) -> String { ... }`
-    pub fn generate_visit_function(&self, f: &mut Formatter) {
+    /// `fn visit_operands(&self, ...) { ... }`
+    fn generate_visit_function(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
         let extra_generic_bound = if self.requires_generic() { "" } else { "<R: Registers>" };
         fmtln!(f, "pub fn visit_operands{extra_generic_bound}(&mut self, visitor: &mut impl OperandVisitor<R>) {{");
@@ -198,10 +199,15 @@ impl dsl::Inst {
     }
 
     /// `fn features(&self) -> Vec<Flag> { ... }`
-    pub fn generate_match_function(&self, f: &mut Formatter) {
-        fmtln!(f, "pub fn features(&self) -> Vec<Flag> {{");
+    fn generate_features_function(&self, f: &mut Formatter) {
+        fmtln!(f, "#[must_use]");
+        fmtln!(f, "pub fn features(&self) -> Vec<Feature> {{");
         f.indent(|f| {
-            let flags = self.features.iter().map(|f| format!("Flag::{f}")).collect::<Vec<_>>();
+            let flags = self
+                .features
+                .iter()
+                .map(|f| format!("Feature::{f}"))
+                .collect::<Vec<_>>();
             fmtln!(f, "vec![{}]", flags.join(", "));
         });
         fmtln!(f, "}}");

@@ -145,7 +145,8 @@ fn generate_inst_visit_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
 fn generate_inst_features_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
     fmtln!(f, "impl<R: Registers> Inst<R> {{");
     f.indent(|f| {
-        fmtln!(f, "pub fn features(&self) -> Vec<Flag> {{");
+        fmtln!(f, "#[must_use]");
+        fmtln!(f, "pub fn features(&self) -> Vec<Feature> {{");
         f.indent(|f| {
             fmtln!(f, "match self {{");
             f.indent_push();
