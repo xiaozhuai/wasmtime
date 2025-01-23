@@ -2,7 +2,7 @@
 //!
 //! This language is intended to be:
 //! - compact--i.e., define an x64 instruction on a single line
-//! - and a close-to-direct mapping of what we read in the x64 developer manual
+//! - and a close-to-direct mapping of what we read in the x64 developer manual.
 
 mod encoding;
 mod features;

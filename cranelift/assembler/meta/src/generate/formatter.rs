@@ -69,8 +69,8 @@ pub struct Formatter {
 impl Formatter {
     /// Construct a [`Formatter`].
     ///
-    /// This constructor reminds us to add the `generated_by` header (typically a comment) to the
-    /// output file.
+    /// This constructor reminds us to add the `generated_by` header (typically
+    /// a comment) to the output file.
     pub fn new(generated_by: &str, file: &'static str, line: u32) -> Self {
         let mut fmt = Self::default();
         let loc = FileLocation::new(file, line);

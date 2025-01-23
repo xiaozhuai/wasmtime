@@ -5,8 +5,8 @@ use std::ops::BitOr;
 
 /// A collection of CPU features.
 ///
-/// An instruction is valid when _any_ of the features in the collection are enabled; i.e., the
-/// collection is an `OR` expression.
+/// An instruction is valid when _any_ of the features in the collection are
+/// enabled; i.e., the collection is an `OR` expression.
 ///
 /// ```
 /// # use cranelift_assembler_meta::dsl::{Features, Feature};
@@ -35,7 +35,8 @@ impl fmt::Display for Features {
 
 /// A CPU feature.
 ///
-/// IA-32e mode is the default mode for 64-bit x86 processors. It consists of two sub-modes:
+/// IA-32e mode is the default mode for 64-bit x86 processors. It consists of
+/// two sub-modes:
 /// - __64-bit mode__: uses the full 64-bit address space
 /// - __compatibility mode__: allows use of legacy 32-bit code
 #[derive(Clone, Copy, PartialEq)]

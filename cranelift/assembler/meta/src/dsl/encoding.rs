@@ -39,8 +39,8 @@ pub enum Encoding {
 }
 
 impl Encoding {
-    /// Check that the encoding is valid for the given operands; this can find issues earlier,
-    /// during construction.
+    /// Check that the encoding is valid for the given operands; this can find
+    /// issues earlier, during construction.
     pub fn validate(&self, operands: &[Operand]) {
         match self {
             Encoding::Rex(rex) => rex.validate(operands),
@@ -60,10 +60,11 @@ impl fmt::Display for Encoding {
 
 /// The traditional x64 encoding.
 ///
-/// We use the "REX" name here in a slightly unorthodox way: "REX" is the name for the optional
-/// _byte_ extending the number of available registers, e.g., but we use it here to distinguish this
-/// from other encoding formats (e.g., VEX, EVEX). The "REX" _byte_ is still optional in this
-/// encoding and only emitted when necessary.
+/// We use the "REX" name here in a slightly unorthodox way: "REX" is the name
+/// for the optional _byte_ extending the number of available registers, e.g.,
+/// but we use it here to distinguish this from other encoding formats (e.g.,
+/// VEX, EVEX). The "REX" _byte_ is still optional in this encoding and only
+/// emitted when necessary.
 pub struct Rex {
     /// Any legacy prefixes that should be included with the instruction.
     pub prefixes: LegacyPrefixes,
@@ -71,24 +72,27 @@ pub struct Rex {
     pub opcode: u8,
     /// Indicates setting the REX.W bit.
     ///
-    /// From the specification: "Indicates the use of a REX prefix that affects operand size or
-    /// instruction semantics. The ordering of the REX prefix and other optional/mandatory
-    /// instruction prefixes are discussed in chapter 2. Note that REX prefixes that promote legacy
-    /// instructions to 64-bit behavior are not listed explicitly in the opcode column."
+    /// From the specification: "Indicates the use of a REX prefix that affects
+    /// operand size or instruction semantics. The ordering of the REX prefix
+    /// and other optional/mandatory instruction prefixes are discussed in
+    /// chapter 2. Note that REX prefixes that promote legacy instructions to
+    /// 64-bit behavior are not listed explicitly in the opcode column."
     pub w: bool,
-    /// From the specification: "indicates that the ModR/M byte of the instruction contains a
-    /// register operand and an r/m operand."
+    /// From the specification: "indicates that the ModR/M byte of the
+    /// instruction contains a register operand and an r/m operand."
     pub r: bool,
-    /// From the specification: "a digit between 0 and 7 indicates that the ModR/M byte of the
-    /// instruction uses only the r/m (register or memory) operand. The reg field contains the digit
-    /// that provides an extension to the instruction's opcode."
+    /// From the specification: "a digit between 0 and 7 indicates that the
+    /// ModR/M byte of the instruction uses only the r/m (register or memory)
+    /// operand. The reg field contains the digit that provides an extension to
+    /// the instruction's opcode."
     pub digit: u8,
     /// The number of bits used as an immediate operand to the instruction.
     ///
-    /// From the specification: "a 1-byte (ib), 2-byte (iw), 4-byte (id) or 8-byte (io) immediate
-    /// operand to the instruction that follows the opcode, ModR/M bytes or scale-indexing bytes.
-    /// The opcode determines if the operand is a signed value. All words, doublewords, and
-    /// quadwords are given with the low-order byte first."
+    /// From the specification: "a 1-byte (ib), 2-byte (iw), 4-byte (id) or
+    /// 8-byte (io) immediate operand to the instruction that follows the
+    /// opcode, ModR/M bytes or scale-indexing bytes. The opcode determines if
+    /// the operand is a signed value. All words, doublewords, and quadwords are
+    /// given with the low-order byte first."
     pub imm: Imm,
 }
 

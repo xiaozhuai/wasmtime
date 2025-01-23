@@ -1,10 +1,12 @@
-//! Generate format-related Rust code; this also includes generation of encoding Rust code.
+//! Generate format-related Rust code; this also includes generation of encoding
+//! Rust code.
 
 use super::{fmtln, Formatter};
 use crate::dsl;
 
 impl dsl::Format {
-    /// Re-order the Intel-style operand order to accommodate ATT-style printing.
+    /// Re-order the Intel-style operand order to accommodate ATT-style
+    /// printing.
     #[must_use]
     pub fn generate_att_style_operands(&self) -> String {
         let mut ordered_ops: Vec<_> = self.operands.iter().map(|o| format!("{{{}}}", o.location)).collect();

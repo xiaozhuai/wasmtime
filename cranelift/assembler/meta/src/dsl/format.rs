@@ -10,8 +10,8 @@
 
 /// An abbreviated constructor for an instruction "format."
 ///
-/// These model what the reference manual calls "instruction operand encodings," usually defined in
-/// a table after an instruction's opcodes.
+/// These model what the reference manual calls "instruction operand encodings,"
+/// usually defined in a table after an instruction's opcodes.
 pub fn fmt(name: impl Into<String>, operands: impl IntoIterator<Item = impl Into<Operand>>) -> Format {
     Format {
         name: name.into(),
@@ -23,7 +23,8 @@ pub fn fmt(name: impl Into<String>, operands: impl IntoIterator<Item = impl Into
 ///
 /// # Panics
 ///
-/// This function panics if the location is an immediate (i.e., an immediate cannot be written to).
+/// This function panics if the location is an immediate (i.e., an immediate
+/// cannot be written to).
 #[must_use]
 pub fn rw(location: Location) -> Operand {
     assert!(!matches!(location.kind(), OperandKind::Imm(_)));
@@ -44,7 +45,8 @@ pub fn r(location: Location) -> Operand {
     }
 }
 
-/// An abbreviated constructor for a "read" operand that is sign-extended to 64 bits (quadword).
+/// An abbreviated constructor for a "read" operand that is sign-extended to 64
+/// bits (quadword).
 ///
 /// # Panics
 ///
@@ -59,7 +61,8 @@ pub fn sxq(location: Location) -> Operand {
     }
 }
 
-/// An abbreviated constructor for a "read" operand that is sign-extended to 32 bits (longword).
+/// An abbreviated constructor for a "read" operand that is sign-extended to 32
+/// bits (longword).
 ///
 /// # Panics
 ///
@@ -74,7 +77,8 @@ pub fn sxl(location: Location) -> Operand {
     }
 }
 
-/// An abbreviated constructor for a "read" operand that is sign-extended to 16 bits (word).
+/// An abbreviated constructor for a "read" operand that is sign-extended to 16
+/// bits (word).
 ///
 /// # Panics
 ///
@@ -91,10 +95,12 @@ pub fn sxw(location: Location) -> Operand {
 
 /// A format describes the operands for an instruction.
 pub struct Format {
-    /// This name, when combined with the instruction mnemonic, uniquely identifies an instruction.
-    /// The reference manual uses this name in the "Instruction Operand Encoding" table.
+    /// This name, when combined with the instruction mnemonic, uniquely
+    /// identifies an instruction. The reference manual uses this name in the
+    /// "Instruction Operand Encoding" table.
     pub name: String,
-    /// These operands should match the "Instruction" column ing the reference manual.
+    /// These operands should match the "Instruction" column ing the reference
+    /// manual.
     pub operands: Vec<Operand>,
 }
 
@@ -104,14 +110,15 @@ impl Format {
         self.operands.iter().map(|o| &o.location)
     }
 
-    /// Return the location of the operand that uses memory, if any; return `None` otherwise.
+    /// Return the location of the operand that uses memory, if any; return
+    /// `None` otherwise.
     pub fn uses_memory(&self) -> Option<Location> {
         debug_assert!(self.locations().copied().filter(Location::uses_memory).count() <= 1);
         self.locations().copied().find(Location::uses_memory)
     }
 
-    /// Return `true` if any of the operands accepts a variable register (i.e., not a fixed
-    /// register, immediate); return `false` otherwise.
+    /// Return `true` if any of the operands accepts a variable register (i.e.,
+    /// not a fixed register, immediate); return `false` otherwise.
     #[must_use]
     pub fn uses_variable_register(&self) -> bool {
         self.locations().any(Location::uses_variable_register)
@@ -137,8 +144,8 @@ impl core::fmt::Display for Format {
 
 /// An x64 operand.
 ///
-/// This is designed to look and feel like the operands as expressed in Intel's _Instruction Set
-/// Reference_.
+/// This is designed to look and feel like the operands as expressed in Intel's
+/// _Instruction Set Reference_.
 ///
 /// ```
 /// # use cranelift_assembler_meta::dsl::{Operand, r, rw, sxq, Location::*};
@@ -233,8 +240,8 @@ impl Location {
         }
     }
 
-    /// Return `true` if the location accepts a variable register (i.e., not a fixed register,
-    /// immediate); return `false` otherwise.
+    /// Return `true` if the location accepts a variable register (i.e., not a
+    /// fixed register, immediate); return `false` otherwise.
     #[must_use]
     pub fn uses_variable_register(&self) -> bool {
         use Location::*;
