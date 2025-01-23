@@ -1,31 +1,25 @@
+//! Generate feature-related Rust code.
+
 use super::{fmtln, Formatter};
 use crate::{dsl, generate::generate_derive};
 
-impl dsl::Flag {
-    pub fn name(&self) -> &str {
-        use dsl::Flag::*;
-        match self {
-            _64b => "_64b",
-            compat => "compat",
-        }
-    }
-
+impl dsl::Feature {
+    /// `pub enum Feature { ... }`
+    ///
+    /// This function recreates itself in the generated code.
     pub fn generate_enum(f: &mut Formatter) {
-        use dsl::Flag::*;
-
-        // N.B.: it is critical that this list contains _all_ variants of the `Flag` enumeration
-        // here at the `meta` level so that we can accurately transcribe them to a structure
-        // available in the generated layer above. If this list is incomplete, we will see compile
-        // errors for generated functions that use the missing variants.
-        const ALL: &[dsl::Flag] = &[_64b, compat];
-
+        use dsl::Feature::*;
         generate_derive(f);
-        fmtln!(f, "pub enum Flag {{");
+        fmtln!(f, "pub enum Feature {{");
         f.indent(|f| {
+            // N.B.: it is critical that this list contains _all_ variants of the `Flag` enumeration
+            // here at the `meta` level so that we can accurately transcribe them to a structure
+            // available in the generated layer above. If this list is incomplete, we will
+            // (fortunately) see compile errors for generated functions that use the missing
+            // variants.
+            const ALL: &[dsl::Feature] = &[_64b, compat];
             for flag in ALL {
-                let name = flag.name();
-                let pos = *flag as usize;
-                fmtln!(f, "{name} = {pos},");
+                fmtln!(f, "{flag},");
             }
         });
         fmtln!(f, "}}");

@@ -1,14 +1,13 @@
+//! Generate format-related Rust code; this also includes generation of encoding Rust code.
+
 use super::{fmtln, Formatter};
 use crate::dsl;
 
 impl dsl::Format {
+    /// Re-order the Intel-style operand order to accommodate ATT-style printing.
     #[must_use]
     pub fn generate_att_style_operands(&self) -> String {
-        let mut ordered_ops: Vec<_> = self
-            .operands
-            .iter()
-            .map(|o| format!("{{{}}}", o.location))
-            .collect();
+        let mut ordered_ops: Vec<_> = self.operands.iter().map(|o| format!("{{{}}}", o.location)).collect();
         if ordered_ops.len() > 1 {
             let first = ordered_ops.remove(0);
             ordered_ops.push(first);
@@ -24,19 +23,21 @@ impl dsl::Format {
         self.generate_immediate(f);
     }
 
+    /// `buf.put1(...);`
     #[allow(clippy::unused_self)]
     fn generate_legacy_prefix(&self, f: &mut Formatter, rex: &dsl::Rex) {
-        if rex.prefixes != dsl::LegacyPrefixes::NoPrefix {
+        use dsl::LegacyPrefixes::*;
+        if rex.prefixes != NoPrefix {
             f.empty_line();
             f.comment("Emit legacy prefixes.");
             match rex.prefixes {
-                dsl::LegacyPrefixes::NoPrefix => unreachable!(),
-                dsl::LegacyPrefixes::_66 => fmtln!(f, "buf.put1(0x66);"),
-                dsl::LegacyPrefixes::_F0 => fmtln!(f, "buf.put1(0xf0);"),
-                dsl::LegacyPrefixes::_66F0 => fmtln!(f, "buf.put1(0x66); buf.put1(0xf0);"),
-                dsl::LegacyPrefixes::_F2 => fmtln!(f, "buf.put1(0xf2);"),
-                dsl::LegacyPrefixes::_F3 => fmtln!(f, "buf.put1(0xf3);"),
-                dsl::LegacyPrefixes::_66F3 => fmtln!(f, "buf.put1(0x66); buf.put1(0xf3"),
+                NoPrefix => unreachable!(),
+                _66 => fmtln!(f, "buf.put1(0x66);"),
+                _F0 => fmtln!(f, "buf.put1(0xf0);"),
+                _66F0 => fmtln!(f, "buf.put1(0x66); buf.put1(0xf0);"),
+                _F2 => fmtln!(f, "buf.put1(0xf2);"),
+                _F3 => fmtln!(f, "buf.put1(0xf3);"),
+                _66F3 => fmtln!(f, "buf.put1(0x66); buf.put1(0xf3"),
             }
         }
     }
@@ -53,26 +54,19 @@ impl dsl::Format {
         f.empty_line();
         f.comment("Emit REX prefix.");
 
-        let rex_flags = if rex.w {
-            "RexFlags::set_w()"
-        } else {
-            "RexFlags::clear_w()"
-        };
-
-        let find_8bit_registers =
-            |l: &dsl::Location| l.bits() == 8 && matches!(l.kind(), Reg(_) | RegMem(_));
+        let find_8bit_registers = |l: &dsl::Location| l.bits() == 8 && matches!(l.kind(), Reg(_) | RegMem(_));
         if self.locations().any(find_8bit_registers) {
-            fmtln!(f, "let mut rex = {rex_flags};");
+            fmtln!(f, "let mut rex = {};", rex.generate_flags());
             for op in self.locations().copied().filter(find_8bit_registers) {
                 fmtln!(f, "self.{op}.always_emit_if_8bit_needed(&mut rex);");
             }
         } else {
-            fmtln!(f, "let rex = {rex_flags};");
+            fmtln!(f, "let rex = {};", rex.generate_flags());
         }
 
         match self.operands_by_kind().as_slice() {
             [FixedReg(dst), Imm(_)] => {
-                // TODO: don't emit REX here
+                // TODO: don't emit REX byte here.
                 fmtln!(f, "let {dst} = {};", dst.generate_fixed_reg().unwrap());
                 fmtln!(f, "let digit = 0x{:x};", rex.digit);
                 fmtln!(f, "rex.emit_two_op(buf, digit, {dst}.enc());");
@@ -82,15 +76,12 @@ impl dsl::Format {
                     fmtln!(f, "let digit = 0x{:x};", rex.digit);
                     fmtln!(f, "match &self.{dst} {{");
                     f.indent(|f| {
-                        fmtln!(
-                            f,
-                            "GprMem::Gpr({dst}) => rex.emit_two_op(buf, digit, {dst}.enc()),"
-                        );
+                        fmtln!(f, "GprMem::Gpr({dst}) => rex.emit_two_op(buf, digit, {dst}.enc()),");
                         fmtln!(f, "GprMem::Mem({dst}) => {dst}.emit_rex_prefix(rex, digit, buf),");
                     });
                     fmtln!(f, "}}");
                 } else {
-                    todo!();
+                    unimplemented!();
                 }
             }
             [Reg(dst), RegMem(src)] => {
@@ -112,7 +103,7 @@ impl dsl::Format {
                 fmtln!(f, "}}");
             }
 
-            unknown => todo!("unknown pattern: {unknown:?}"),
+            unknown => unimplemented!("unknown pattern: {unknown:?}"),
         }
     }
 
@@ -136,10 +127,7 @@ impl dsl::Format {
                 fmtln!(f, "match &self.{dst} {{");
                 f.indent(|f| {
                     fmtln!(f, "GprMem::Gpr({dst}) => emit_modrm(buf, digit, {dst}.enc()),");
-                    fmtln!(
-                        f,
-                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, digit, {dst}, 0, None),"
-                    );
+                    fmtln!(f, "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, digit, {dst}, 0, None),");
                 });
                 fmtln!(f, "}}");
             }
@@ -148,10 +136,7 @@ impl dsl::Format {
                 fmtln!(f, "match &self.{src} {{");
                 f.indent(|f| {
                     fmtln!(f, "GprMem::Gpr({src}) => emit_modrm(buf, {dst}, {src}.enc()),");
-                    fmtln!(
-                        f,
-                        "GprMem::Mem({src}) => emit_modrm_sib_disp(buf, off, {dst}, {src}, 0, None),"
-                    );
+                    fmtln!(f, "GprMem::Mem({src}) => emit_modrm_sib_disp(buf, off, {dst}, {src}, 0, None),");
                 });
                 fmtln!(f, "}}");
             }
@@ -160,15 +145,12 @@ impl dsl::Format {
                 fmtln!(f, "match &self.{dst} {{");
                 f.indent(|f| {
                     fmtln!(f, "GprMem::Gpr({dst}) => emit_modrm(buf, {src}, {dst}.enc()),");
-                    fmtln!(
-                        f,
-                        "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, {src}, {dst}, 0, None),"
-                    );
+                    fmtln!(f, "GprMem::Mem({dst}) => emit_modrm_sib_disp(buf, off, {src}, {dst}, 0, None),");
                 });
                 fmtln!(f, "}}");
             }
 
-            unknown => todo!("unknown pattern: {unknown:?}"),
+            unknown => unimplemented!("unknown pattern: {unknown:?}"),
         }
     }
 
@@ -190,6 +172,16 @@ impl dsl::Format {
                 // Do nothing: no immediates expected.
                 debug_assert!(!unknown.iter().any(|o| matches!(o, Imm(_))));
             }
+        }
+    }
+}
+
+impl dsl::Rex {
+    fn generate_flags(&self) -> &str {
+        if self.w {
+            "RexFlags::set_w()"
+        } else {
+            "RexFlags::clear_w()"
         }
     }
 }

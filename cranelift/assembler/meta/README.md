@@ -20,8 +20,8 @@ necessarily).
 ### Use
 
 This is primarily intended to be used for generating Rust code, i.e.,
-`generate("some-file.rs")`. It also has the ability to print a list of the
-defined instructions:
+`generate_rust_assembler("some-file.rs")`. It also has the ability to print
+a list of the defined instructions:
 
 ```console
 $ cargo run

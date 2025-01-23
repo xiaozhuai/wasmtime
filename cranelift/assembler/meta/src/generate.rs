@@ -1,3 +1,5 @@
+//! Contains the code-generation logic to emit for the DSL-defined instructions.
+
 mod features;
 mod format;
 mod formatter;
@@ -6,13 +8,12 @@ mod operand;
 
 use crate::dsl;
 use formatter::fmtln;
-pub use formatter::Formatter;
+pub use formatter::{maybe_file_loc, Formatter};
 
 /// Generate the Rust assembler code; e.g., `enum Inst { ... }`.
 pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
     // Generate "all instructions" enum.
     generate_inst_enum(f, insts);
-
     generate_inst_display_impl(f, insts);
     generate_inst_encode_impl(f, insts);
     generate_inst_visit_impl(f, insts);
@@ -28,7 +29,8 @@ pub fn rust_assembler(f: &mut Formatter, insts: &[dsl::Inst]) {
         f.empty_line();
     }
 
-    dsl::Flag::generate_enum(f);
+    // Generate the `Feature` enum.
+    dsl::Feature::generate_enum(f);
 }
 
 /// Generate the `isle_assembler_methods!` macro.
@@ -168,32 +170,4 @@ fn generate_inst_constructor_impl(f: &mut Formatter, insts: &[dsl::Inst]) {
         }
     });
     fmtln!(f, "}}");
-}
-
-pub fn maybe_file_loc(fmtstr: &str, file: &'static str, line: u32) -> Option<FileLocation> {
-    if fmtstr.ends_with(['{', '}']) {
-        None
-    } else {
-        Some(FileLocation { file, line })
-    }
-}
-
-pub struct FileLocation {
-    pub(crate) file: &'static str,
-    pub(crate) line: u32,
-}
-
-impl FileLocation {
-    /// ```
-    /// FileLocation::new(file!(), line!());
-    /// ```
-    pub fn new(file: &'static str, line: u32) -> Self {
-        Self { file, line }
-    }
-}
-
-impl core::fmt::Display for FileLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.file, self.line)
-    }
 }

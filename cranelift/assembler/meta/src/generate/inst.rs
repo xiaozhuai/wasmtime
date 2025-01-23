@@ -32,7 +32,7 @@ impl dsl::Inst {
     }
 
     fn requires_generic(&self) -> bool {
-        self.format.uses_arbitrary_register()
+        self.format.uses_variable_register()
     }
 
     /// `<struct_name><R>`
@@ -201,12 +201,7 @@ impl dsl::Inst {
     pub fn generate_match_function(&self, f: &mut Formatter) {
         fmtln!(f, "pub fn features(&self) -> Vec<Flag> {{");
         f.indent(|f| {
-            let flags = self
-                .features
-                .flags
-                .iter()
-                .map(|f| format!("Flag::{}", f.name()))
-                .collect::<Vec<_>>();
+            let flags = self.features.iter().map(|f| format!("Flag::{f}")).collect::<Vec<_>>();
             fmtln!(f, "vec![{}]", flags.join(", "));
         });
         fmtln!(f, "}}");
@@ -238,6 +233,10 @@ impl dsl::Inst {
     }
 
     /// `fn x64_<inst>(&mut self, <params>) -> Inst<R> { ... }`
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the instruction has no operands.
     pub fn generate_isle_macro(&self, f: &mut Formatter, read_ty: &str, read_write_ty: &str) {
         use dsl::OperandKind::*;
         let struct_name = self.struct_name();
@@ -276,6 +275,10 @@ impl dsl::Inst {
 
     /// `(decl x64_<inst> (<params>) <return>)
     ///  (extern constructor x64_<inst> x64_<inst>)`
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the instruction has no operands.
     pub fn generate_isle_definition(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
 

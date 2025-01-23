@@ -9,7 +9,7 @@ mod features;
 pub mod format;
 
 pub use encoding::{rex, vex, Encoding, LegacyPrefixes, Rex};
-pub use features::{Features, Flag};
+pub use features::{Feature, Features};
 pub use format::{fmt, r, rw, sxl, sxq, sxw};
 pub use format::{Extension, Format, Location, Mutability, Operand, OperandKind};
 
@@ -40,9 +40,8 @@ pub struct Inst {
 impl core::fmt::Display for Inst {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         let Inst { name, format, encoding, features } = self;
-
         write!(f, "{name}: {format} => {encoding}")?;
-        if !features.flags.is_empty() {
+        if !features.is_empty() {
             write!(f, " [{features}]")?;
         }
         Ok(())

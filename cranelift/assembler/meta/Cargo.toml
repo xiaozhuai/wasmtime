@@ -11,3 +11,4 @@ all = "deny"
 pedantic = "warn"
 wildcard_imports = { level = "allow", priority = 1 }
 enum_glob_use = { level = "allow", priority = 1 }
+just_underscores_and_digits = { level = "allow", priority = 1 }
