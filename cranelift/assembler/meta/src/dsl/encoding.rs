@@ -226,7 +226,9 @@ impl LegacyPrefixes {
     pub fn contains_66(&self) -> bool {
         match self {
             LegacyPrefixes::_66 | LegacyPrefixes::_66F0 | LegacyPrefixes::_66F3 => true,
-            LegacyPrefixes::NoPrefix | LegacyPrefixes::_F0 | LegacyPrefixes::_F2 | LegacyPrefixes::_F3 => false,
+            LegacyPrefixes::NoPrefix | LegacyPrefixes::_F0 | LegacyPrefixes::_F2 | LegacyPrefixes::_F3 => {
+                false
+            }
         }
     }
 }

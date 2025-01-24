@@ -4,12 +4,12 @@
 #![allow(unused_comparisons)] // Necessary to use maybe_print_hex! with `u*` values.
 #![allow(clippy::cast_possible_wrap)] // Necessary to cast to `i*` for sign extension.
 
-use crate::sink::{KnownOffset, KnownOffsetTable};
+use crate::api::{KnownOffset, KnownOffsetTable};
 use arbitrary::Arbitrary;
 
 /// This helper function prints the hexadecimal representation of the immediate
 /// value, but only if the value is greater than or equal to 10. This is
-/// necessary for how Capstone pretty-prints immediate values.
+/// necessary to match how Capstone pretty-prints immediate values.
 macro_rules! maybe_print_hex {
     ($n:expr) => {
         if $n >= 0 && $n < 10 {
@@ -20,6 +20,7 @@ macro_rules! maybe_print_hex {
     };
 }
 
+/// An 8-bit immediate operand.
 #[derive(Arbitrary, Clone, Copy, Debug)]
 pub struct Imm8(u8);
 
@@ -47,6 +48,7 @@ impl Imm8 {
     }
 }
 
+/// A 16-bit immediate operand.
 #[derive(Arbitrary, Clone, Debug)]
 pub struct Imm16(u16);
 
@@ -74,6 +76,7 @@ impl Imm16 {
     }
 }
 
+/// A 32-bit immediate operand.
 #[derive(Arbitrary, Clone, Debug)]
 pub struct Imm32(u32);
 
@@ -101,15 +104,8 @@ impl Imm32 {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Extension {
-    None,
-    SignExtendQuad,
-    SignExtendLong,
-    SignExtendWord,
-    ZeroExtend,
-}
-
+/// A 32-bit immediate like [`Imm32`], but with slightly different
+/// pretty-printing.
 #[derive(Clone, Copy, Debug, Arbitrary)]
 pub struct Simm32(i32);
 
@@ -150,6 +146,13 @@ impl std::fmt::LowerHex for Simm32 {
     }
 }
 
+/// A [`Simm32`] immediate with an optional known offset.
+///
+/// Cranelift does not know certain offsets until emission time. To accommodate
+/// Cranelift, this structure stores an optional [`KnownOffset`]. The following
+/// happens immediately before emission:
+/// - the [`KnownOffset`] is looked up, mapping it to an offset value
+/// - the [`Simm32`] value is added to the offset value
 #[derive(Clone, Debug)]
 pub struct Simm32PlusKnownOffset {
     pub simm32: Simm32,
@@ -162,13 +165,12 @@ impl Simm32PlusKnownOffset {
     /// Panics if the sum of the immediate and the known offset value overflows.
     #[must_use]
     pub fn value(&self, offsets: &impl KnownOffsetTable) -> i32 {
-        let offset = match self.offset {
+        let known_offset = match self.offset {
             Some(offset) => offsets[offset],
             None => 0,
         };
-        self.simm32
-            .value()
-            .checked_add(offset)
+        known_offset
+            .checked_add(self.simm32.value())
             .expect("no wrapping")
     }
 }
@@ -176,7 +178,10 @@ impl Simm32PlusKnownOffset {
 impl Arbitrary<'_> for Simm32PlusKnownOffset {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         // For now, we don't generate offsets (TODO).
-        Ok(Self { simm32: Simm32::arbitrary(u)?, offset: None })
+        Ok(Self {
+            simm32: Simm32::arbitrary(u)?,
+            offset: None,
+        })
     }
 }
 
@@ -187,4 +192,14 @@ impl std::fmt::LowerHex for Simm32PlusKnownOffset {
         }
         std::fmt::LowerHex::fmt(&self.simm32, f)
     }
+}
+
+/// Define the ways an immediate may be sign- or zero-extended.
+#[derive(Clone, Copy, Debug)]
+pub enum Extension {
+    None,
+    SignExtendQuad,
+    SignExtendLong,
+    SignExtendWord,
+    ZeroExtend,
 }

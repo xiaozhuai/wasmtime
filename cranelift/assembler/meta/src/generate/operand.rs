@@ -8,9 +8,7 @@ impl dsl::Operand {
             FixedReg(_) => None,
             Imm(loc) => Some(format!("Imm{}", loc.bits())),
             Reg(_) => Some(format!("Gpr<R::{}Gpr>", self.mutability.generate_type())),
-            RegMem(_) => {
-                Some(format!("GprMem<R::{}Gpr, R::ReadGpr>", self.mutability.generate_type()))
-            }
+            RegMem(_) => Some(format!("GprMem<R::{}Gpr, R::ReadGpr>", self.mutability.generate_type())),
         }
     }
 

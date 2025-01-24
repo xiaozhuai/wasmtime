@@ -6,10 +6,8 @@ use crate::{ir::types, ir::AtomicRmwOp, isa};
 use generated_code::{Context, MInst, RegisterClass};
 
 // Types that the generated ISLE code uses via `use super::*`.
-use super::{
-    is_int_or_ref_ty, is_mergeable_load, lower_to_amode, CraneliftRegisters, MergeableLoadSize,
-    PairedGpr,
-};
+use super::external::{CraneliftRegisters, PairedGpr};
+use super::{is_int_or_ref_ty, is_mergeable_load, lower_to_amode, MergeableLoadSize};
 use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::ir::immediates::*;
 use crate::ir::types::*;
@@ -26,10 +24,7 @@ use crate::machinst::{
     VCodeConstantData,
 };
 use alloc::vec::Vec;
-use cranelift_assembler::Gpr as AssemblerGpr;
-use cranelift_assembler::Imm32 as AssemblerImm32;
-use cranelift_assembler::Imm8 as AssemblerImm8;
-use cranelift_assembler::{Imm16 as AssemblerImm16, Simm32PlusKnownOffset};
+use cranelift_assembler as asm;
 use regalloc2::PReg;
 use std::boxed::Box;
 
@@ -44,13 +39,16 @@ type BoxReturnCallIndInfo = Box<ReturnCallInfo<Reg>>;
 type VecArgPair = Vec<ArgPair>;
 type BoxSyntheticAmode = Box<SyntheticAmode>;
 
-/// TODO
-
-type AssemblerReadGpr = cranelift_assembler::Gpr<Gpr>;
-type AssemblerReadWriteGpr = cranelift_assembler::Gpr<PairedGpr>;
-type AssemblerReadGprMem = cranelift_assembler::GprMem<Gpr, Gpr>;
-type AssemblerReadWriteGprMem = cranelift_assembler::GprMem<PairedGpr, Gpr>;
-type AssemblerInst = cranelift_assembler::Inst<CraneliftRegisters>;
+/// When interacting with the external assembler (see `external.rs`), we
+/// need to fix the types we'll use.
+type AssemblerReadGpr = asm::Gpr<Gpr>;
+type AssemblerReadWriteGpr = asm::Gpr<PairedGpr>;
+type AssemblerReadGprMem = asm::GprMem<Gpr, Gpr>;
+type AssemblerReadWriteGprMem = asm::GprMem<PairedGpr, Gpr>;
+type AssemblerInst = asm::Inst<CraneliftRegisters>;
+type AssemblerImm8 = asm::Imm8;
+type AssemblerImm16 = asm::Imm16;
+type AssemblerImm32 = asm::Imm32;
 
 pub struct SinkableLoad {
     inst: Inst,
@@ -1002,7 +1000,7 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
     fn convert_gpr_to_assembler_read_write_gpr(&mut self, read: Gpr) -> AssemblerReadWriteGpr {
         let write = self.lower_ctx.alloc_tmp(types::I64).only_reg().unwrap();
         let write = WritableGpr::from_writable_reg(write).unwrap();
-        AssemblerGpr::new(PairedGpr { read, write })
+        AssemblerReadWriteGpr::new(PairedGpr { read, write })
     }
 
     fn convert_assembler_read_write_gpr_to_gpr(&mut self, gpr: &AssemblerReadWriteGpr) -> Gpr {
@@ -1028,79 +1026,6 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                 unimplemented!("cannot convert a memory address to a GPR; check the ISLE rules")
             }
         }
-    }
-}
-
-impl Into<cranelift_assembler::Amode<Gpr>> for SyntheticAmode {
-    fn into(self) -> cranelift_assembler::Amode<Gpr> {
-        match self {
-            SyntheticAmode::Real(amode) => match amode {
-                Amode::ImmReg {
-                    simm32,
-                    base,
-                    flags,
-                } => cranelift_assembler::Amode::ImmReg {
-                    simm32: cranelift_assembler::Simm32PlusKnownOffset {
-                        simm32: simm32.into(),
-                        offset: None,
-                    },
-                    base: Gpr::unwrap_new(base),
-                    trap: flags.trap_code().map(Into::into),
-                },
-                Amode::ImmRegRegShift {
-                    simm32,
-                    base,
-                    index,
-                    shift,
-                    flags,
-                } => cranelift_assembler::Amode::ImmRegRegShift {
-                    base,
-                    index: cranelift_assembler::MinusRsp::new(index),
-                    scale: cranelift_assembler::Scale::new(shift),
-                    simm32: simm32.into(),
-                    trap: flags.trap_code().map(Into::into),
-                },
-                Amode::RipRelative { target } => cranelift_assembler::Amode::RipRelative {
-                    target: cranelift_assembler::DeferredTarget::Label(cranelift_assembler::Label(
-                        target.as_u32(),
-                    )),
-                },
-            },
-            SyntheticAmode::IncomingArg { offset } => cranelift_assembler::Amode::ImmReg {
-                base: Gpr::unwrap_new(regs::rbp()),
-                simm32: Simm32PlusKnownOffset {
-                    simm32: i32::try_from(offset).unwrap().into(),
-                    offset: Some(assembler_offsets::KEY_INCOMING_ARG),
-                },
-                trap: None,
-            },
-            SyntheticAmode::SlotOffset { simm32 } => cranelift_assembler::Amode::ImmReg {
-                base: Gpr::unwrap_new(regs::rbp()),
-                simm32: Simm32PlusKnownOffset {
-                    simm32: simm32.into(),
-                    offset: Some(assembler_offsets::KEY_SLOT_OFFSET),
-                },
-                trap: None,
-            },
-            SyntheticAmode::ConstantOffset(vcode_constant) => {
-                cranelift_assembler::Amode::RipRelative {
-                    target: cranelift_assembler::DeferredTarget::Constant(
-                        cranelift_assembler::Constant(vcode_constant.as_u32()),
-                    ),
-                }
-            }
-        }
-    }
-}
-
-pub mod assembler_offsets {
-    pub const KEY_INCOMING_ARG: usize = 0;
-    pub const KEY_SLOT_OFFSET: usize = 1;
-}
-
-impl Into<cranelift_assembler::TrapCode> for TrapCode {
-    fn into(self) -> cranelift_assembler::TrapCode {
-        cranelift_assembler::TrapCode(self.as_raw())
     }
 }
 

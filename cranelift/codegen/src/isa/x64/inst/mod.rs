@@ -1,6 +1,5 @@
 //! This module defines x86_64-specific machine instruction types.
 
-use arbitrary::Arbitrary;
 pub use emit_state::EmitState;
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
@@ -21,6 +20,7 @@ mod emit;
 mod emit_state;
 #[cfg(test)]
 mod emit_tests;
+pub mod external;
 pub mod regs;
 mod stack_switch;
 pub mod unwind;
@@ -1983,94 +1983,6 @@ impl fmt::Debug for Inst {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct CraneliftRegisters;
-impl cranelift_assembler::Registers for CraneliftRegisters {
-    type ReadGpr = Gpr;
-    type ReadWriteGpr = PairedGpr;
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct PairedGpr {
-    pub(crate) read: Gpr,
-    pub(crate) write: WritableGpr,
-}
-
-impl<'a> Arbitrary<'a> for PairedGpr {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        todo!()
-    }
-}
-
-impl<'a> Arbitrary<'a> for Gpr {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        todo!()
-    }
-}
-
-impl cranelift_assembler::AsReg for PairedGpr {
-    fn enc(&self) -> u8 {
-        let PairedGpr { read, write } = self;
-        let read = enc(read);
-        let write = enc(&write.to_reg());
-        assert_eq!(read, write);
-        write
-    }
-
-    fn new(_: u8) -> Self {
-        panic!("disallow creation of new assembler registers")
-    }
-}
-
-impl cranelift_assembler::AsReg for Gpr {
-    fn enc(&self) -> u8 {
-        enc(self)
-    }
-
-    fn new(_: u8) -> Self {
-        panic!("disallow creation of new assembler registers")
-    }
-}
-
-fn enc(gpr: &Gpr) -> u8 {
-    if let Some(real) = gpr.to_reg().to_real_reg() {
-        real.hw_enc()
-    } else {
-        unreachable!()
-    }
-}
-
-/// A wrapper to implement the `cranelift-assembler` register allocation trait,
-/// `RegallocVisitor`, in terms of the trait used here, `OperandVisitor`.
-struct AssemblerRegallocVisitor<'a, T>
-where
-    T: OperandVisitor,
-{
-    collector: &'a mut T,
-}
-
-impl<'a, T: OperandVisitor> cranelift_assembler::OperandVisitor<CraneliftRegisters>
-    for AssemblerRegallocVisitor<'a, T>
-{
-    fn read(&mut self, reg: &mut Gpr) {
-        self.collector.reg_use(reg);
-    }
-
-    fn read_write(&mut self, reg: &mut PairedGpr) {
-        let PairedGpr { read, write } = reg;
-        self.collector.reg_use(read);
-        self.collector.reg_reuse_def(write, 0);
-    }
-
-    fn fixed_read(&mut self, _reg: &Gpr) {
-        todo!()
-    }
-
-    fn fixed_read_write(&mut self, _reg: &PairedGpr) {
-        todo!()
-    }
-}
-
 fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
     // Note: because we need to statically know the indices of each
     // reg in the operands list in order to fetch its allocation
@@ -2809,7 +2721,7 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         }
 
         Inst::External { inst } => {
-            inst.visit_operands(&mut AssemblerRegallocVisitor { collector });
+            inst.visit(&mut external::RegallocVisitor { collector });
         }
     }
 }

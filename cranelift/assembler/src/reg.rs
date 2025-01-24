@@ -1,8 +1,10 @@
 //! Pure register operands.
 
+use crate::AsReg;
 use crate::{fuzz::FuzzReg, rex::RexFlags};
 use arbitrary::Arbitrary;
 
+/// Encode x64 registers.
 pub mod enc {
     use super::Size;
 
@@ -124,33 +126,6 @@ pub mod enc {
             },
             _ => panic!("%invalid{enc}"), // TODO: print instead?
         }
-    }
-}
-
-pub trait Registers {
-    type ReadGpr: AsReg + for<'a> Arbitrary<'a>;
-    type ReadWriteGpr: AsReg + for<'a> Arbitrary<'a>;
-}
-
-/// TODO
-pub trait AsReg: Clone + std::fmt::Debug {
-    // TODO: only useful for fuzz generation.
-    fn new(enc: u8) -> Self;
-    fn enc(&self) -> u8;
-    //     fn to_string(&self, size: Size) -> &str;
-
-    fn to_string(&self, size: Size) -> &str {
-        enc::to_string(self.enc(), size)
-    }
-}
-
-impl AsReg for u8 {
-    fn new(enc: u8) -> Self {
-        enc
-    }
-
-    fn enc(&self) -> u8 {
-        *self
     }
 }
 

@@ -9,7 +9,11 @@ impl dsl::Format {
     /// printing.
     #[must_use]
     pub fn generate_att_style_operands(&self) -> String {
-        let mut ordered_ops: Vec<_> = self.operands.iter().map(|o| format!("{{{}}}", o.location)).collect();
+        let mut ordered_ops: Vec<_> = self
+            .operands
+            .iter()
+            .map(|o| format!("{{{}}}", o.location))
+            .collect();
         if ordered_ops.len() > 1 {
             let first = ordered_ops.remove(0);
             ordered_ops.push(first);

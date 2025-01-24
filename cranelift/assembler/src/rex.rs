@@ -1,6 +1,8 @@
+//! Encoding logic for REX instructions.
+
 #![allow(clippy::bool_to_int_with_if)]
 
-use crate::sink::CodeSink;
+use crate::api::CodeSink;
 
 pub(crate) fn low8_will_sign_extend_to_32(x: u32) -> bool {
     #[allow(clippy::cast_possible_wrap)]
@@ -19,11 +21,11 @@ pub fn encode_modrm(m0d: u8, enc_reg_g: u8, rm_e: u8) -> u8 {
 
 /// Encode the SIB byte (scale-index-base).
 #[inline]
-pub fn encode_sib(shift: u8, enc_index: u8, enc_base: u8) -> u8 {
-    debug_assert!(shift < 4);
+pub fn encode_sib(scale: u8, enc_index: u8, enc_base: u8) -> u8 {
+    debug_assert!(scale < 4);
     debug_assert!(enc_index < 8);
     debug_assert!(enc_base < 8);
-    ((shift & 3) << 6) | ((enc_index & 7) << 3) | (enc_base & 7)
+    ((scale & 3) << 6) | ((enc_index & 7) << 3) | (enc_base & 7)
 }
 
 /// Write a suitable number of bits from an imm64 to the sink.

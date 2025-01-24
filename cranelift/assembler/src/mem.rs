@@ -1,11 +1,12 @@
 //! Memory operands to instructions.
 
+use crate::api::{AsReg, CodeSink, Constant, KnownOffsetTable, Label, TrapCode};
 use crate::imm::{Simm32, Simm32PlusKnownOffset};
-use crate::reg::{self, AsReg, MinusRsp, Size};
+use crate::reg::{self, MinusRsp, Size};
 use crate::rex::{encode_modrm, encode_sib, Imm, RexFlags};
-use crate::sink::{CodeSink, Constant, KnownOffsetTable, Label, TrapCode};
 use arbitrary::Arbitrary;
 
+/// x64 memory addressing modes.
 #[derive(Arbitrary, Clone, Debug)]
 pub enum Amode<R: AsReg> {
     ImmReg {
@@ -26,6 +27,7 @@ pub enum Amode<R: AsReg> {
 }
 
 impl<R: AsReg> Amode<R> {
+    /// Return the [`TrapCode`] associated with this [`Amode`], if any.
     pub fn trap_code(&self) -> Option<TrapCode> {
         match self {
             Amode::ImmReg { trap, .. } | Amode::ImmRegRegShift { trap, .. } => *trap,
@@ -33,6 +35,7 @@ impl<R: AsReg> Amode<R> {
         }
     }
 
+    /// Encode the [`Amode`] into a ModRM/SIB/displacement sequence.
     pub fn emit_rex_prefix(&self, rex: RexFlags, enc_g: u8, sink: &mut impl CodeSink) {
         match self {
             Amode::ImmReg { base, .. } => {
@@ -41,11 +44,11 @@ impl<R: AsReg> Amode<R> {
                 // TODO: debug_assert_ne!(enc_e, reg::enc::RBP);
                 rex.emit_two_op(sink, enc_g, enc_e);
             }
-            Amode::ImmRegRegShift { base: reg_base, index: reg_index, .. } => {
-                let enc_base = reg_base.enc();
+            Amode::ImmRegRegShift { base, index, .. } => {
+                let enc_base = base.enc();
                 // TODO: debug_assert_ne!(enc_base, reg::enc::RSP);
                 // TODO: debug_assert_ne!(enc_base, reg::enc::RBP);
-                let enc_index = reg_index.enc();
+                let enc_index = index.enc();
                 // TODO: debug_assert_ne!(enc_index, reg::enc::RSP);
                 // TODO: debug_assert_ne!(enc_index, reg::enc::RBP);
                 rex.emit_three_op(sink, enc_g, enc_index, enc_base);
@@ -57,6 +60,10 @@ impl<R: AsReg> Amode<R> {
         }
     }
 
+    /// Return the registers used by this [`Amode`].
+    ///
+    /// This is useful in generated code to allow access by a
+    /// [`RegisterVisitor`](crate::RegisterVisitor).
     pub fn as_mut(&mut self) -> Vec<&mut R> {
         match self {
             Amode::ImmReg { base, .. } => {
@@ -72,6 +79,7 @@ impl<R: AsReg> Amode<R> {
     }
 }
 
+/// For RIP-relative addressing, keep track of the [`CodeSink`]-specific target.
 #[derive(Arbitrary, Clone, Debug)]
 pub enum DeferredTarget {
     Label(Label),
@@ -87,11 +95,17 @@ impl<R: AsReg> std::fmt::Display for Amode<R> {
                 let base = reg::enc::to_string(base.enc(), Size::Quadword);
                 write!(f, "{simm32:x}({base})")
             }
-            Amode::ImmRegRegShift { simm32, base, index, scale, .. } => {
+            Amode::ImmRegRegShift {
+                simm32,
+                base,
+                index,
+                scale,
+                ..
+            } => {
                 let base = reg::enc::to_string(base.enc(), Size::Quadword);
                 let index = reg::enc::to_string(index.enc(), Size::Quadword);
-                if scale.shift() > 1 {
-                    let shift = scale.shift();
+                let shift = scale.shift();
+                if shift > 1 {
                     write!(f, "{simm32:x}({base}, {index}, {shift})")
                 } else {
                     write!(f, "{simm32:x}({base}, {index})")
@@ -102,6 +116,7 @@ impl<R: AsReg> std::fmt::Display for Amode<R> {
     }
 }
 
+/// The scaling factor for the index register in certain [`Amode`]s.
 #[derive(Arbitrary, Clone, Debug)]
 pub enum Scale {
     One,
@@ -110,6 +125,8 @@ pub enum Scale {
     Eight,
 }
 impl Scale {
+    /// Create a new [`Scale`] from its hardware encoding.
+    ///
     /// # Panics
     ///
     /// Panics if `enc` is not a valid encoding for a scale (0-3).
@@ -123,6 +140,8 @@ impl Scale {
             _ => panic!("invalid scale encoding: {enc}"),
         }
     }
+
+    /// Return the hardware encoding of this [`Scale`].
     fn enc(&self) -> u8 {
         match self {
             Scale::One => 0b00,
@@ -131,11 +150,18 @@ impl Scale {
             Scale::Eight => 0b11,
         }
     }
+
+    /// Return how much this [`Scale`] will shift the value in the index
+    /// register of the SIB byte.
+    ///
+    /// This is useful for pretty-printing; when encoding, one usually needs
+    /// [`Scale::enc`].
     fn shift(&self) -> u8 {
         1 << self.enc()
     }
 }
 
+/// A general-purpose register or memory operand.
 #[derive(Arbitrary, Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub enum GprMem<R: AsReg, M: AsReg> {
@@ -144,6 +170,8 @@ pub enum GprMem<R: AsReg, M: AsReg> {
 }
 
 impl<R: AsReg, M: AsReg> GprMem<R, M> {
+    /// Force emission of the REX byte if the register is: `rsp`, `rbp`, `rsi`,
+    /// `rdi`.
     pub fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
         match self {
             GprMem::Gpr(gpr) => {
@@ -164,6 +192,7 @@ impl<R: AsReg, M: AsReg> GprMem<R, M> {
     }
 }
 
+/// Emit the ModRM/SIB/displacement sequence for a memory operand.
 pub fn emit_modrm_sib_disp<R: AsReg>(
     sink: &mut impl CodeSink,
     offsets: &impl KnownOffsetTable,
@@ -203,10 +232,14 @@ pub fn emit_modrm_sib_disp<R: AsReg>(
         }
 
         Amode::ImmRegRegShift {
-            simm32, base: reg_base, index: reg_index, scale, ..
+            simm32,
+            base,
+            index,
+            scale,
+            ..
         } => {
-            let enc_base = reg_base.enc();
-            let enc_index = reg_index.enc();
+            let enc_base = base.enc();
+            let enc_index = index.enc();
 
             // Encoding of ModRM/SIB bytes don't allow the index register to
             // ever be rsp. Note, though, that the encoding of r12, whose three
@@ -235,7 +268,6 @@ pub fn emit_modrm_sib_disp<R: AsReg>(
             sink.put1(encode_modrm(0b00, enc_g & 7, 0b101));
 
             let offset = sink.cur_offset();
-
             let target = match target {
                 DeferredTarget::Label(label) => label.clone(),
                 DeferredTarget::Constant(constant) => sink.get_label_for_constant(constant.clone()),

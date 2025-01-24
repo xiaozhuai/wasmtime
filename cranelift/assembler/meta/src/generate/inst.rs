@@ -27,7 +27,7 @@ impl dsl::Inst {
 
     /// `<class name>_<format name>`
     #[must_use]
-    fn struct_name(&self) -> String {
+    pub(crate) fn struct_name(&self) -> String {
         format!("{}_{}", self.name.to_lowercase(), self.format.name.to_lowercase())
     }
 
@@ -36,7 +36,7 @@ impl dsl::Inst {
     }
 
     /// `<struct_name><R>`
-    fn struct_name_with_generic(&self) -> String {
+    pub(crate) fn struct_name_with_generic(&self) -> String {
         let struct_name = self.struct_name();
         if self.requires_generic() {
             format!("{struct_name}<R>")
@@ -52,37 +52,6 @@ impl dsl::Inst {
         } else {
             "impl"
         }
-    }
-
-    /// `<inst>(<inst>),`
-    pub fn generate_enum_variant(&self, f: &mut Formatter) {
-        let variant_name = self.struct_name();
-        let struct_name = self.struct_name_with_generic();
-        fmtln!(f, "{variant_name}({struct_name}),");
-    }
-
-    // `Self::<inst>(i) => write!(f, "{}", i),`
-    pub fn generate_variant_display(&self, f: &mut Formatter) {
-        let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => write!(f, \"{{i}}\"),");
-    }
-
-    // `Self::<inst>(i) => i.encode(b, o),`
-    pub fn generate_variant_encode(&self, f: &mut Formatter) {
-        let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => i.encode(b, o),");
-    }
-
-    // `Self::<inst>(i) => i.visit_operands(v),`
-    pub fn generate_variant_visit(&self, f: &mut Formatter) {
-        let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => i.visit_operands(v),");
-    }
-
-    // `Self::<inst>(i) => i.features(),`
-    pub fn generate_variant_features(&self, f: &mut Formatter) {
-        let variant_name = self.struct_name();
-        fmtln!(f, "Self::{variant_name}(i) => i.features(),");
     }
 
     // `fn <inst>(<params>) -> Inst { ... }`
@@ -160,11 +129,15 @@ impl dsl::Inst {
         fmtln!(f, "}}");
     }
 
-    /// `fn visit_operands(&self, ...) { ... }`
+    /// `fn visit(&self, ...) { ... }`
     fn generate_visit_function(&self, f: &mut Formatter) {
         use dsl::OperandKind::*;
-        let extra_generic_bound = if self.requires_generic() { "" } else { "<R: Registers>" };
-        fmtln!(f, "pub fn visit_operands{extra_generic_bound}(&mut self, visitor: &mut impl OperandVisitor<R>) {{");
+        let extra_generic_bound = if self.requires_generic() {
+            ""
+        } else {
+            "<R: Registers>"
+        };
+        fmtln!(f, "pub fn visit{extra_generic_bound}(&mut self, visitor: &mut impl RegisterVisitor<R>) {{");
         f.indent(|f| {
             for o in &self.format.operands {
                 match o.location.kind() {
@@ -188,7 +161,10 @@ impl dsl::Inst {
                         fmtln!(f, "match &mut self.{rm} {{");
                         f.indent(|f| {
                             fmtln!(f, "GprMem::Gpr(r) => visitor.{call}(r),");
-                            fmtln!(f, "GprMem::Mem(m) => m.as_mut().iter_mut().for_each(|r| visitor.read(r)),");
+                            fmtln!(
+                                f,
+                                "GprMem::Mem(m) => m.as_mut().iter_mut().for_each(|r| visitor.read(r)),"
+                            );
                         });
                         fmtln!(f, "}}");
                     }

@@ -66,6 +66,9 @@ fn pretty_print_hexadecimal(hex: &[u8]) -> String {
     s
 }
 
+/// Fuzz-specific registers.
+///
+/// For the fuzzer, we do not need any fancy register types; see [`FuzzReg`].
 #[derive(Arbitrary, Debug)]
 pub struct FuzzRegs;
 impl Registers for FuzzRegs {
@@ -73,6 +76,7 @@ impl Registers for FuzzRegs {
     type ReadWriteGpr = FuzzReg;
 }
 
+/// A simple `u8` register type for fuzzing only
 #[derive(Clone, Copy, Debug)]
 pub struct FuzzReg(u8);
 
