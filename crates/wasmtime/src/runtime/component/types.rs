@@ -2,7 +2,9 @@
 
 use crate::component::matching::InstanceType;
 use crate::{Engine, ExternType, FuncType};
+use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
 use wasmtime_environ::component::{
@@ -815,6 +817,181 @@ impl Component {
                 ComponentItem::from(engine, ty, &self.0.instance()),
             )
         })
+    }
+
+    /// Iterates over exports of the component, recursively into all exported components and
+    /// component instances.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wasmtime::Engine;
+    /// use wasmtime::component::Component;
+    /// use wasmtime::component::types::ComponentItem;
+    ///
+    /// # fn main() -> wasmtime::Result<()> {
+    /// let engine = Engine::default();
+    /// let component = Component::new(
+    ///     &engine,
+    ///     r#"
+    ///         (component
+    ///             (core module $m
+    ///                 (func (export "f"))
+    ///                 (func (export "g"))
+    ///             )
+    ///             (core instance $i (instantiate $m))
+    ///             (func (export "f")
+    ///                 (canon lift (core func $i "f")))
+    ///             (func (export "g")
+    ///                 (canon lift (core func $i "g")))
+    ///             (component $c
+    ///                 (core module $m
+    ///                     (func (export "h"))
+    ///                 )
+    ///                 (core instance $i (instantiate $m))
+    ///                 (func (export "h")
+    ///                     (canon lift (core func $i "h")))
+    ///             )
+    ///             (instance (export "i") (instantiate $c))
+    ///             (type (export "ct")
+    ///                 (component
+    ///                     (type $t (func (param "a" string) (result string)))
+    ///                     (export "cf" (func (type $t)))))
+    ///
+    ///         )
+    ///     "#,
+    /// )?;
+    ///
+    /// let component_type = component.component_type();
+    /// // Get all items exported by the component root:
+    /// let exports = component_type
+    ///     .exports_rec(&engine)
+    ///     .collect::<Vec<_>>();
+    /// assert_eq!(exports.len(), 6);
+    /// assert_eq!(exports[0].0, ["f"]);
+    /// assert!(matches!(exports[0].1, ComponentItem::ComponentFunc(_)));
+    /// assert_eq!(exports[1].0, ["g"]);
+    /// assert_eq!(exports[2].0, ["i"]);
+    /// assert!(matches!(exports[2].1, ComponentItem::ComponentInstance(_)));
+    /// assert_eq!(exports[3].0, ["i", "h"]);
+    /// assert!(matches!(exports[3].1, ComponentItem::ComponentFunc(_)));
+    /// assert_eq!(exports[4].0, ["ct"]);
+    /// assert!(matches!(exports[4].1, ComponentItem::Component(_)));
+    /// assert_eq!(exports[5].0, ["ct", "cf"]);
+    /// assert!(matches!(exports[5].1, ComponentItem::ComponentFunc(_)));
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn exports_rec<'a>(
+        &'a self,
+        engine: &'a Engine,
+    ) -> impl Iterator<Item = (Vec<&'a str>, ComponentItem)> + 'a {
+        fn exports_component<'a>(
+            instance_type: InstanceType<'a>,
+            engine: &'a Engine,
+            namespace: Vec<&'a str>,
+            index: TypeComponentIndex,
+        ) -> impl Iterator<Item = (Vec<&'a str>, ComponentItem)> + 'a {
+            instance_type.types[index]
+                .exports
+                .iter()
+                .flat_map(move |(name, ty)| {
+                    let mut full_name = namespace.clone();
+                    full_name.push(name);
+                    match ty {
+                        TypeDef::Component(index) => {
+                            let component = Component::from(*index, &instance_type);
+                            Box::new(
+                                std::iter::once((
+                                    full_name.clone(),
+                                    ComponentItem::Component(component),
+                                ))
+                                .chain(exports_component(
+                                    instance_type,
+                                    engine,
+                                    full_name,
+                                    *index,
+                                )),
+                            )
+                                as Box<dyn Iterator<Item = (Vec<&'a str>, ComponentItem)> + 'a>
+                        }
+                        TypeDef::ComponentInstance(index) => {
+                            let instance = ComponentInstance::from(*index, &instance_type);
+                            Box::new(
+                                std::iter::once((
+                                    full_name.clone(),
+                                    ComponentItem::ComponentInstance(instance),
+                                ))
+                                .chain(exports_instance(
+                                    instance_type,
+                                    engine,
+                                    full_name,
+                                    *index,
+                                )),
+                            )
+                        }
+                        _ => Box::new(std::iter::once((
+                            full_name,
+                            ComponentItem::from(engine, ty, &instance_type),
+                        ))),
+                    }
+                })
+        }
+
+        fn exports_instance<'a>(
+            instance_type: InstanceType<'a>,
+            engine: &'a Engine,
+            namespace: Vec<&'a str>,
+            index: TypeComponentInstanceIndex,
+        ) -> impl Iterator<Item = (Vec<&'a str>, ComponentItem)> + 'a {
+            instance_type.types[index]
+                .exports
+                .iter()
+                .flat_map(move |(name, ty)| {
+                    let mut full_name = namespace.clone();
+                    full_name.push(name);
+                    match ty {
+                        TypeDef::Component(index) => {
+                            let component = Component::from(*index, &instance_type);
+                            Box::new(
+                                std::iter::once((
+                                    full_name.clone(),
+                                    ComponentItem::Component(component),
+                                ))
+                                .chain(exports_component(
+                                    instance_type,
+                                    engine,
+                                    full_name,
+                                    *index,
+                                )),
+                            )
+                                as Box<dyn Iterator<Item = (Vec<&'a str>, ComponentItem)> + 'a>
+                        }
+                        TypeDef::ComponentInstance(index) => {
+                            let instance = ComponentInstance::from(*index, &instance_type);
+                            Box::new(
+                                std::iter::once((
+                                    full_name.clone(),
+                                    ComponentItem::ComponentInstance(instance),
+                                ))
+                                .chain(exports_instance(
+                                    instance_type,
+                                    engine,
+                                    full_name,
+                                    *index,
+                                )),
+                            )
+                        }
+                        _ => Box::new(std::iter::once((
+                            full_name,
+                            ComponentItem::from(engine, ty, &instance_type),
+                        ))),
+                    }
+                })
+        }
+
+        exports_component(self.0.instance(), engine, Vec::new(), self.0.index)
     }
 }
 
