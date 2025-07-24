@@ -111,10 +111,6 @@ impl Inst {
                 smallvec![InstructionSet::CMPXCHG16b]
             }
 
-            Inst::XmmUnaryRmREvex { op, .. }
-            | Inst::XmmRmREvex { op, .. }
-            | Inst::XmmRmREvex3 { op, .. } => op.available_from(),
-
             Inst::External { inst } => {
                 use cranelift_assembler_x64::Feature::*;
                 let mut features = smallvec![];
@@ -135,6 +131,9 @@ impl Inst {
                         avx2 => features.push(InstructionSet::AVX2),
                         avx512f => features.push(InstructionSet::AVX512F),
                         avx512vl => features.push(InstructionSet::AVX512VL),
+                        avx512dq => features.push(InstructionSet::AVX512DQ),
+                        avx512bitalg => features.push(InstructionSet::AVX512BITALG),
+                        avx512vbmi => features.push(InstructionSet::AVX512VBMI),
                         cmpxchg16b => features.push(InstructionSet::CMPXCHG16b),
                         fma => features.push(InstructionSet::FMA),
                     }
@@ -447,43 +446,6 @@ impl PrettyPrint for Inst {
                 let dividend = pretty_print_reg(dividend.to_reg(), 1);
                 let dst = pretty_print_reg(dst.to_reg().to_reg(), 1);
                 format!("checked_srem_seq {dividend}, {divisor}, {dst}")
-            }
-
-            Inst::XmmUnaryRmREvex { op, src, dst, .. } => {
-                let dst = pretty_print_reg(dst.to_reg().to_reg(), 8);
-                let src = src.pretty_print(8);
-                let op = ljustify(op.to_string());
-                format!("{op} {src}, {dst}")
-            }
-
-            Inst::XmmRmREvex {
-                op,
-                src1,
-                src2,
-                dst,
-                ..
-            } => {
-                let src1 = pretty_print_reg(src1.to_reg(), 8);
-                let src2 = src2.pretty_print(8);
-                let dst = pretty_print_reg(dst.to_reg().to_reg(), 8);
-                let op = ljustify(op.to_string());
-                format!("{op} {src2}, {src1}, {dst}")
-            }
-
-            Inst::XmmRmREvex3 {
-                op,
-                src1,
-                src2,
-                src3,
-                dst,
-                ..
-            } => {
-                let src1 = pretty_print_reg(src1.to_reg(), 8);
-                let src2 = pretty_print_reg(src2.to_reg(), 8);
-                let src3 = src3.pretty_print(8);
-                let dst = pretty_print_reg(dst.to_reg().to_reg(), 8);
-                let op = ljustify(op.to_string());
-                format!("{op} {src3}, {src2}, {src1}, {dst}")
             }
 
             Inst::XmmMinMaxSeq {
@@ -947,36 +909,6 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(divisor);
             collector.reg_fixed_use(dividend, regs::rax());
             collector.reg_fixed_def(dst, regs::rax());
-        }
-        Inst::XmmUnaryRmREvex { src, dst, .. } => {
-            collector.reg_def(dst);
-            src.get_operands(collector);
-        }
-        Inst::XmmRmREvex {
-            op,
-            src1,
-            src2,
-            dst,
-            ..
-        } => {
-            assert_ne!(*op, Avx512Opcode::Vpermi2b);
-            collector.reg_use(src1);
-            src2.get_operands(collector);
-            collector.reg_def(dst);
-        }
-        Inst::XmmRmREvex3 {
-            op,
-            src1,
-            src2,
-            src3,
-            dst,
-            ..
-        } => {
-            assert_eq!(*op, Avx512Opcode::Vpermi2b);
-            collector.reg_use(src1);
-            collector.reg_use(src2);
-            src3.get_operands(collector);
-            collector.reg_reuse_def(dst, 0); // Reuse `src1`.
         }
         Inst::XmmUninitializedValue { dst } => collector.reg_def(dst),
         Inst::GprUninitializedValue { dst } => collector.reg_def(dst),
@@ -1562,14 +1494,6 @@ pub enum LabelUse {
     /// next instruction (so the size of the payload -- 4 bytes -- is subtracted from the payload).
     JmpRel32,
 
-    /// An 8-bit offset from location of relocation itself, added to the
-    /// existing value at that location.
-    ///
-    /// Used for control flow instructions which consider an offset from the
-    /// start of the next instruction (so the size of the payload -- 1 byte --
-    /// is subtracted from the payload).
-    JmpRel8,
-
     /// A 32-bit offset from location of relocation itself, added to the existing value at that
     /// location.
     PCRel32,
@@ -1581,21 +1505,18 @@ impl MachInstLabelUse for LabelUse {
     fn max_pos_range(self) -> CodeOffset {
         match self {
             LabelUse::JmpRel32 | LabelUse::PCRel32 => 0x7fff_ffff,
-            LabelUse::JmpRel8 => 0x7f,
         }
     }
 
     fn max_neg_range(self) -> CodeOffset {
         match self {
             LabelUse::JmpRel32 | LabelUse::PCRel32 => 0x8000_0000,
-            LabelUse::JmpRel8 => 0x80,
         }
     }
 
     fn patch_size(self) -> CodeOffset {
         match self {
             LabelUse::JmpRel32 | LabelUse::PCRel32 => 4,
-            LabelUse::JmpRel8 => 1,
         }
     }
 
@@ -1610,9 +1531,6 @@ impl MachInstLabelUse for LabelUse {
                 let value = pc_rel.wrapping_add(addend).wrapping_sub(4);
                 buffer.copy_from_slice(&value.to_le_bytes()[..]);
             }
-            LabelUse::JmpRel8 => {
-                buffer[0] = buffer[0].wrapping_add(pc_rel as u8).wrapping_sub(1);
-            }
             LabelUse::PCRel32 => {
                 let addend = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
                 let value = pc_rel.wrapping_add(addend);
@@ -1624,21 +1542,12 @@ impl MachInstLabelUse for LabelUse {
     fn supports_veneer(self) -> bool {
         match self {
             LabelUse::JmpRel32 | LabelUse::PCRel32 => false,
-
-            // Technically this is possible to have a veneer because it can jump
-            // to a 32-bit jump which keeps going. That being said at this time
-            // this variant is only used in `emit.rs` for jumps that are already
-            // known to be short so it's a bug if we jump to a jump that's too
-            // far away. In the future if general-purpose basic-block
-            // terminators are switched to using short jumps to get promoted to
-            // a long jump then this may wish to change.
-            LabelUse::JmpRel8 => false,
         }
     }
 
     fn veneer_size(self) -> CodeOffset {
         match self {
-            LabelUse::JmpRel32 | LabelUse::PCRel32 | LabelUse::JmpRel8 => 0,
+            LabelUse::JmpRel32 | LabelUse::PCRel32 => 0,
         }
     }
 
@@ -1648,7 +1557,7 @@ impl MachInstLabelUse for LabelUse {
 
     fn generate_veneer(self, _: &mut [u8], _: CodeOffset) -> (CodeOffset, LabelUse) {
         match self {
-            LabelUse::JmpRel32 | LabelUse::PCRel32 | LabelUse::JmpRel8 => {
+            LabelUse::JmpRel32 | LabelUse::PCRel32 => {
                 panic!("Veneer not supported for JumpRel32 label-use.");
             }
         }
